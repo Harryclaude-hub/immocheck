@@ -495,6 +495,16 @@ main{padding:20px 0 60px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .row.between{justify-content:space-between}
 
+/* Mehrfachauswahl als antippbare Kästchen */
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:4px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;
+  background:#fff;font-size:.83rem;font-weight:600;color:var(--muted);cursor:pointer;transition:.13s;user-select:none;min-height:38px}
+.chip input{width:auto;margin:0;accent-color:var(--brand)}
+.chip:has(input:checked){background:var(--brand-soft);border-color:var(--brand-2);color:var(--brand-dark)}
+.chip:active{transform:scale(.97)}
+.substep{border-left:3px solid var(--brand-soft);padding-left:12px;margin:14px 0}
+.substep>h4{font-size:.82rem;text-transform:uppercase;letter-spacing:.04em;color:var(--brand);margin:0 0 8px}
+
 /* Stats */
 .stat{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:var(--shadow)}
 .stat .n{font-size:1.7rem;font-weight:800;letter-spacing:-.03em}
@@ -612,7 +622,31 @@ table.t td{padding:10px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middl
 .trend .bar{flex:1;max-width:44px;background:linear-gradient(180deg,var(--brand-2),var(--brand));border-radius:6px 6px 0 0;position:relative;min-height:6px}
 .trend .bar span{position:absolute;top:-17px;left:50%;transform:translateX(-50%);font-size:.68rem;font-weight:700;color:var(--muted)}
 
-@media(max-width:560px){.hide-sm{display:none}.wrap{padding:0 12px}h1{font-size:1.3rem}}
+/* Einheitenliste, funktioniert am Handy wie am Rechner */
+.unit-list{display:flex;flex-direction:column;gap:8px}
+.unit{display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:#fff;box-shadow:var(--shadow)}
+.unit .nr{width:34px;height:34px;flex:none;border-radius:9px;background:var(--brand-soft);color:var(--brand-dark);display:grid;place-items:center;font-weight:800;font-size:.8rem}
+.unit .txt{flex:1;min-width:0}
+.unit .txt strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.unit .txt small{color:var(--muted);font-size:.75rem}
+.unit .act{display:flex;gap:6px;flex:none}
+
+/* Handy */
+@media(max-width:560px){
+  .hide-sm{display:none}
+  .wrap{padding:0 12px}
+  h1{font-size:1.3rem}
+  /* Tabellen seitlich schiebbar statt gequetscht */
+  table.t{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
+  /* Daumenfreundliche Flächen */
+  .btn{padding:12px 16px}
+  .btn.sm{padding:10px 13px}
+  input,select,textarea{font-size:16px}   /* verhindert das Zoomen beim Antippen in iOS */
+  .modal{max-width:100%;max-height:94dvh;border-radius:16px 16px 0 0;padding:18px 16px}
+  .modal-bg{place-items:end center;padding:0}
+  .unit .act .btn{padding:10px 12px}
+  .chip{padding:9px 13px;min-height:42px}
+}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;font-size:.88rem;z-index:200;box-shadow:0 10px 30px rgba(0,0,0,.3);max-width:90vw}
 .loader{width:22px;height:22px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -741,6 +775,22 @@ const OBJEKTTYPEN = [
   ["gewerbe","Gewerbeobjekt"],
   ["sonstiges","Sonstiges"]
 ];
+
+/* Gebäudestruktur, Auswahllisten für die Mehrfachauswahl */
+const LEITUNGEN = ["Strom","Gas","Wasser","Kanal","Fernwärme","Öltank","Photovoltaik","Glasfaser","Kabel / TV","Klingel / Gegensprech","Blitzschutz","Notbeleuchtung"];
+const KELLER_INHALT = ["Kellerabteile","Waschküche","Trockenraum","Heizraum","Technikraum","Fahrradraum","Kinderwagenraum","Müllraum","Tiefgarage","Lagerraum","Hausanschlussraum","Sauna"];
+const EG_INHALT = ["Eingangsbereich","Briefkästen","Treppenhaus","Aufzug","Kinderwagenraum","Müllraum","Gemeinschaftsraum","Gewerbeeinheit","Innenhof","Garten","Fahrradstellplätze","Hausmeisterraum"];
+const DG_INHALT = ["Dachbodenabteile","Trockenraum","Technikraum","Aufzugsmaschinenraum","Dachterrasse","Dachausstieg","Ausgebaut","Nicht ausgebaut"];
+
+/* Baut eine Mehrfachauswahl aus Kästchen. gewaehlt ist ein Array aus der Datenbank. */
+function chipAuswahl(name, optionen, gewaehlt){
+  const aktiv = Array.isArray(gewaehlt) ? gewaehlt : [];
+  return `<div class="chips">${optionen.map(o=>`
+    <label class="chip">
+      <input type="checkbox" name="${name}" value="${esc(o)}" ${aktiv.includes(o)?"checked":""}>
+      <span>${esc(o)}</span>
+    </label>`).join("")}</div>`;
+}
 const PRIOS = [
   ["keine","Keine"], ["niedrig","Niedrig"], ["mittel","Mittel"], ["hoch","Hoch"], ["kritisch","Kritisch"]
 ];
@@ -1120,12 +1170,41 @@ function editProperty(id){
         <div class="field"><label>Heizungsart</label><input name="heating_type" value="${f("heating_type")}" placeholder="Gas, Wärmepumpe, Fernwärme …"></div>
         <div class="field"><label>Energieklasse</label><input name="energy_class" value="${f("energy_class")}" placeholder="A, B, C …"></div>
       </div>
-      <div class="row" style="gap:16px;margin-bottom:12px">
+      <hr>
+      <h3 style="margin-bottom:4px">Gebäudestruktur</h3>
+      <div class="small muted" style="margin-bottom:12px">Für ganze Häuser und Wohnanlagen. Alles freiwillig, was du hier einträgst, steht später im Protokoll.</div>
+
+      <div class="grid g3">
+        <div class="field"><label>Aufzüge</label><input name="elevator_count" type="number" min="0" value="${f("elevator_count","0")}"></div>
+        <div class="field"><label>Kellerabteile</label><input name="basement_units" type="number" min="0" value="${f("basement_units")}"></div>
+        <div class="field"><label>Dachbodenabteile</label><input name="attic_units" type="number" min="0" value="${f("attic_units")}"></div>
+      </div>
+
+      <div class="row" style="gap:16px;margin-bottom:14px">
         <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_basement" style="width:auto" ${p?.has_basement?"checked":""}> Keller</label>
-        <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_elevator" style="width:auto" ${p?.has_elevator?"checked":""}> Aufzug</label>
+        <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_attic" style="width:auto" ${p?.has_attic?"checked":""}> Dachgeschoss</label>
         <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_garden" style="width:auto" ${p?.has_garden?"checked":""}> Garten</label>
         <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_parking" style="width:auto" ${p?.has_parking?"checked":""}> Stellplätze</label>
       </div>
+
+      <div class="substep">
+        <h4>Leitungen und Anschlüsse</h4>
+        ${chipAuswahl("utilities", LEITUNGEN, p?.utilities)}
+      </div>
+      <div class="substep">
+        <h4>Im Keller vorhanden</h4>
+        ${chipAuswahl("basement_content", KELLER_INHALT, p?.basement_content)}
+      </div>
+      <div class="substep">
+        <h4>Im Erdgeschoss vorhanden</h4>
+        ${chipAuswahl("ground_content", EG_INHALT, p?.ground_content)}
+      </div>
+      <div class="substep">
+        <h4>Im Dachgeschoss vorhanden</h4>
+        ${chipAuswahl("attic_content", DG_INHALT, p?.attic_content)}
+      </div>
+      <div class="field"><label>Notiz zur Struktur</label><textarea name="structure_notes" placeholder="z. B. Hinterhaus über zweiten Aufgang, Tiefgarage nur über Rampe erreichbar …">${f("structure_notes")}</textarea></div>
+      <hr>
       <div class="grid g2">
         <div class="field"><label>Eigentümer</label><input name="owner_name" value="${f("owner_name")}"></div>
         <div class="field"><label>Ansprechpartner vor Ort</label><input name="contact_name" value="${f("contact_name")}"></div>
@@ -1157,8 +1236,14 @@ async function saveProperty(ev, id){
     build_year: num(fd.get("build_year")), units_count: num(fd.get("units_count"))||1,
     floors: num(fd.get("floors")), living_area: num(fd.get("living_area")), plot_area: num(fd.get("plot_area")),
     heating_type: fd.get("heating_type")||null, energy_class: fd.get("energy_class")||null,
-    has_basement: !!fd.get("has_basement"), has_elevator: !!fd.get("has_elevator"),
+    has_basement: !!fd.get("has_basement"), has_attic: !!fd.get("has_attic"),
     has_garden: !!fd.get("has_garden"), has_parking: !!fd.get("has_parking"),
+    elevator_count: num(fd.get("elevator_count")) || 0,
+    has_elevator: (num(fd.get("elevator_count")) || 0) > 0,
+    basement_units: num(fd.get("basement_units")), attic_units: num(fd.get("attic_units")),
+    utilities: fd.getAll("utilities"), basement_content: fd.getAll("basement_content"),
+    ground_content: fd.getAll("ground_content"), attic_content: fd.getAll("attic_content"),
+    structure_notes: fd.get("structure_notes")||null,
     owner_name: fd.get("owner_name")||null, contact_name: fd.get("contact_name")||null,
     contact_phone: fd.get("contact_phone")||null, contact_email: fd.get("contact_email")||null,
     description: fd.get("description")||null
@@ -1229,21 +1314,53 @@ async function viewProperty(){
         ${infoRow("Telefon", p.contact_phone)}
         ${infoRow("E-Mail", p.contact_email)}
       </div>
-      ${[p.has_basement&&"Keller",p.has_elevator&&"Aufzug",p.has_garden&&"Garten",p.has_parking&&"Stellplätze"].filter(Boolean).length?
-        `<hr><div class="row">${[p.has_basement&&"🕳️ Keller",p.has_elevator&&"🛗 Aufzug",p.has_garden&&"🌳 Garten",p.has_parking&&"🅿️ Stellplätze"].filter(Boolean).map(x=>`<span class="badge">${x}</span>`).join("")}</div>`:""}
+      ${(() => {
+        const merkmale = [
+          p.has_basement && "🕳️ Keller" + (p.basement_units ? ` (${p.basement_units} Abteile)` : ""),
+          p.elevator_count > 0 ? `🛗 ${p.elevator_count} Aufzug${p.elevator_count>1?"üge":""}` : (p.has_elevator && "🛗 Aufzug"),
+          p.has_attic && "🏠 Dachgeschoss" + (p.attic_units ? ` (${p.attic_units} Abteile)` : ""),
+          p.has_garden && "🌳 Garten",
+          p.has_parking && "🅿️ Stellplätze"
+        ].filter(Boolean);
+        return merkmale.length ? `<hr><div class="row">${merkmale.map(x=>`<span class="badge">${esc(x)}</span>`).join("")}</div>` : "";
+      })()}
       ${p.description?`<hr><div class="small">${esc(p.description).replace(/\n/g,"<br>")}</div>`:""}
     </div>
 
+    ${(() => {
+      const ebenen = [
+        ["🔌 Leitungen und Anschlüsse", p.utilities],
+        ["🕳️ Keller", p.basement_content],
+        ["🚪 Erdgeschoss", p.ground_content],
+        ["🏠 Dachgeschoss", p.attic_content]
+      ].filter(([,v]) => Array.isArray(v) && v.length);
+      if(!ebenen.length && !p.structure_notes) return "";
+      return `<div class="card">
+        <h3>Gebäudestruktur</h3>
+        ${ebenen.map(([titel,werte])=>`<div class="substep">
+          <h4>${titel}</h4>
+          <div class="row" style="gap:6px">${werte.map(w=>`<span class="badge info">${esc(w)}</span>`).join("")}</div>
+        </div>`).join("")}
+        ${p.structure_notes?`<div class="small" style="margin-top:10px">${esc(p.structure_notes).replace(/\n/g,"<br>")}</div>`:""}
+      </div>`;
+    })()}
+
     <div class="card">
-      <div class="row between"><h3 style="margin:0">Einheiten / Wohnungen</h3><button class="btn sec sm" onclick="editUnit('${p.id}')">+ Einheit</button></div>
-      ${units.length? `<table class="t"><thead><tr><th>Bezeichnung</th><th>Geschoss</th><th>Zimmer</th><th>m²</th><th>Mieter</th><th></th></tr></thead><tbody>
-        ${units.map(u=>`<tr>
-          <td><strong>${esc(u.label)}</strong></td><td>${esc(u.floor||"–")}</td><td>${esc(u.rooms??"–")}</td><td>${esc(u.area??"–")}</td><td>${esc(u.tenant_name||"–")}</td>
-          <td style="text-align:right;white-space:nowrap">
-            <button class="btn ghost sm" onclick="editUnit('${p.id}','${u.id}')">✎</button>
+      <div class="row between"><h3 style="margin:0">Einheiten / Wohnungen ${units.length?`<span class="badge brand">${units.length}</span>`:""}</h3><button class="btn sec sm" onclick="editUnit('${p.id}')">+ Einheit</button></div>
+      ${units.length? `<div class="unit-list">
+        ${units.map((u,i)=>`<div class="unit">
+          <div class="nr">${i+1}</div>
+          <div class="txt">
+            <strong>${esc(u.label)}</strong>
+            <small>${[u.floor, u.rooms!=null?u.rooms+" Zi.":null, u.area!=null?u.area+" m²":null, u.tenant_name].filter(Boolean).map(esc).join(" · ")||"Keine Angaben"}</small>
+          </div>
+          <div class="act">
+            <button class="btn ghost sm" title="Bearbeiten" onclick="editUnit('${p.id}','${u.id}')">✎</button>
+            <button class="btn ghost sm" title="Duplizieren" onclick="duplicateUnit('${u.id}','${p.id}')">⧉</button>
             <button class="btn sec sm" onclick="startInspection('${p.id}','${u.id}')">Prüfen</button>
-          </td></tr>`).join("")}
-      </tbody></table>` : `<div class="small muted">Noch keine einzelnen Einheiten erfasst. Für Mehrfamilienhäuser sinnvoll, damit du jede Wohnung separat prüfen kannst.</div>`}
+          </div>
+        </div>`).join("")}
+      </div>` : `<div class="small muted">Noch keine einzelnen Einheiten erfasst. Für Mehrfamilienhäuser sinnvoll, damit du jede Wohnung separat prüfen kannst.</div>`}
     </div>
 
     ${trend.length>1?`<div class="card">
@@ -1279,6 +1396,11 @@ function editUnit(propId, unitId){
       <h2>${unitId?"Einheit bearbeiten":"Neue Einheit"}</h2>
       <form onsubmit="return saveUnit(event,'${propId}',${unitId?`'${unitId}'`:"null"})">
         <div class="field"><label>Bezeichnung *</label><input name="label" required value="${f("label")}" placeholder="z. B. Top 3 oder EG links"></div>
+        ${unitId?"":`<div class="field">
+          <label>Wie viele gleiche Einheiten?</label>
+          <input name="anzahl" type="number" min="1" max="200" value="1">
+          <div class="xs muted" style="margin-top:4px">Bei mehr als 1 wird durchnummeriert, aus "Top 1" werden "Top 1", "Top 2", "Top 3" und so weiter.</div>
+        </div>`}
         <div class="grid g3">
           <div class="field"><label>Geschoss</label><input name="floor" value="${f("floor")}" placeholder="EG, 1. OG"></div>
           <div class="field"><label>Zimmer</label><input name="rooms" type="number" step="0.5" value="${f("rooms")}"></div>
@@ -1306,15 +1428,67 @@ async function saveUnit(ev, propId, unitId){
   const rec = {property_id:propId, label:fd.get("label"), floor:fd.get("floor")||null,
     rooms:num(fd.get("rooms")), area:num(fd.get("area")), tenant_name:fd.get("tenant_name")||null,
     tenant_since:fd.get("tenant_since")||null, notes:fd.get("notes")||null};
-  const {error} = unitId ? await sb.from("units").update(rec).eq("id",unitId) : await sb.from("units").insert(rec);
+
+  let error;
+  if(unitId){
+    ({error} = await sb.from("units").update(rec).eq("id",unitId));
+  } else {
+    const anzahl = Math.min(Math.max(num(fd.get("anzahl")) || 1, 1), 200);
+    let saetze = [rec];
+    if(anzahl > 1){
+      const belegt = ((await sb.from("units").select("label").eq("property_id",propId)).data||[]).map(x=>x.label);
+      saetze = [rec];
+      for(let i=1; i<anzahl; i++){
+        const vorher = saetze[saetze.length-1].label;
+        saetze.push({...rec, label: naechsteBezeichnung(vorher, belegt.concat(saetze.map(s=>s.label))),
+                     tenant_name:null, tenant_since:null});
+      }
+    }
+    ({error} = await sb.from("units").insert(saetze));
+    if(!error) toast(anzahl > 1 ? `${anzahl} Einheiten angelegt ✓` : "Gespeichert ✓");
+  }
   if(error){ toast("Fehler: "+error.message,4000); return false; }
-  closeModal(); toast("Gespeichert ✓"); go("property",{id:propId});
+  closeModal();
+  if(unitId) toast("Gespeichert ✓");
+  go("property",{id:propId});
   return false;
 }
 async function deleteUnit(unitId, propId){
   if(!confirm("Einheit löschen?")) return;
   await sb.from("units").delete().eq("id",unitId);
   closeModal(); go("property",{id:propId});
+}
+
+/* Nächste freie Bezeichnung: "Top 3" wird zu "Top 4", "EG links" zu "EG links 2". */
+function naechsteBezeichnung(basis, vorhanden){
+  const treffer = String(basis||"Einheit").match(/^(.*?)(\d+)\s*$/);
+  let stamm, n;
+  if(treffer){ stamm = treffer[1]; n = Number(treffer[2]) + 1; }
+  else { stamm = String(basis||"Einheit") + " "; n = 2; }
+  const genommen = new Set((vorhanden||[]).map(x=>String(x||"").trim().toLowerCase()));
+  let kandidat, schutz = 0;
+  do { kandidat = (stamm + n).trim(); n++; schutz++; }
+  while(genommen.has(kandidat.toLowerCase()) && schutz < 500);
+  return kandidat;
+}
+
+/* Legt eine Kopie der Einheit an. Mieterdaten werden bewusst nicht mitkopiert. */
+async function duplicateUnit(unitId, propId){
+  const [einzeln, alle] = await Promise.all([
+    sb.from("units").select("*").eq("id",unitId).maybeSingle(),
+    sb.from("units").select("label").eq("property_id",propId)
+  ]);
+  const u = einzeln.data;
+  if(!u){ toast("Einheit nicht gefunden", 3000); return; }
+  const rec = {
+    property_id: propId,
+    label: naechsteBezeichnung(u.label, (alle.data||[]).map(x=>x.label)),
+    floor: u.floor, rooms: u.rooms, area: u.area, notes: u.notes
+  };
+  const {error} = await sb.from("units").insert(rec);
+  if(error){ toast("Fehler: "+error.message, 4000); return; }
+  toast(`Angelegt: ${rec.label} ✓`);
+  go("property",{id:propId});
 }
 
 /* =========================================================

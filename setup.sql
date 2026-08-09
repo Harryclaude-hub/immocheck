@@ -37,6 +37,18 @@ create table if not exists public.properties (
   updated_at timestamptz not null default now()
 );
 
+-- Gebaeudestruktur: Mengen, Leitungen und Ausstattung je Ebene.
+-- Als alter table, damit bestehende Installationen die Felder nachtraeglich bekommen.
+alter table public.properties add column if not exists elevator_count   integer default 0;
+alter table public.properties add column if not exists basement_units   integer;
+alter table public.properties add column if not exists attic_units      integer;
+alter table public.properties add column if not exists has_attic        boolean default false;
+alter table public.properties add column if not exists utilities        text[] default '{}';
+alter table public.properties add column if not exists basement_content text[] default '{}';
+alter table public.properties add column if not exists ground_content   text[] default '{}';
+alter table public.properties add column if not exists attic_content    text[] default '{}';
+alter table public.properties add column if not exists structure_notes  text;
+
 create table if not exists public.units (
   id uuid primary key default gen_random_uuid(),
   property_id uuid not null references public.properties(id) on delete cascade,
