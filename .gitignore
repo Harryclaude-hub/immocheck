@@ -1,0 +1,9 @@
+# lokale Zugangsdaten, niemals einchecken
+privat.json
+ImmoCheck-privat.html
+
+# Werkzeuge
+node_modules/
+package-lock.json
+entry.js
+.DS_Store

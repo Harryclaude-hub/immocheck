@@ -1,0 +1,2381 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>ImmoCheck · Sicherheits- und Qualitätskontrolle</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  --brand:#1d4ed8; --brand-2:#3b82f6; --brand-soft:#eff6ff; --brand-dark:#1e3a8a;
+  --accent:#dc2626; --accent-2:#ef4444; --accent-soft:#fef2f2;
+  --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f6f8fc; --surface:#fff;
+  --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626; --info:#2563eb;
+  --r:14px; --shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px rgba(29,78,216,.07);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--ink); font-size:15px; line-height:1.5;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+h1,h2,h3,h4{margin:0 0 .4em;line-height:1.25}
+h1{font-size:1.5rem;letter-spacing:-.02em}
+h2{font-size:1.15rem;letter-spacing:-.01em}
+h3{font-size:1rem}
+a{color:var(--brand);text-decoration:none}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:16px;width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(20,184,166,.15)}
+textarea{min-height:70px;resize:vertical}
+label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin:0 0 5px}
+.hidden{display:none !important}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;background:var(--brand);color:#fff;padding:11px 16px;border-radius:11px;font-weight:600;transition:.15s;white-space:nowrap}
+.btn:hover{filter:brightness(1.07)}
+.btn:active{transform:scale(.98)}
+.btn.sec{background:#fff;color:var(--ink);border-color:var(--line)}
+.btn.ghost{background:transparent;color:var(--muted);border-color:transparent;padding:8px 10px}
+.btn.danger{background:var(--bad)}
+.btn.sm{padding:7px 11px;font-size:.85rem;border-radius:9px}
+.btn.full{width:100%}
+.btn[disabled]{opacity:.5;pointer-events:none}
+
+/* Layout */
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+.topbar{background:#fff;color:var(--ink);padding:13px 0;position:sticky;top:0;z-index:40;border-bottom:1px solid var(--line);box-shadow:0 1px 10px rgba(15,23,42,.05)}
+.topbar::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--brand) 0%,var(--brand-2) 55%,var(--accent) 55%,var(--accent-2) 100%)}
+.topbar .wrap{display:flex;align-items:center;gap:12px}
+.logo{font-weight:800;letter-spacing:-.03em;font-size:1.1rem;display:flex;align-items:center;gap:9px;color:var(--brand-dark)}
+.logo .mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:grid;place-items:center;font-size:.95rem;box-shadow:0 2px 8px rgba(29,78,216,.3)}
+.logo em{font-style:normal;color:var(--accent)}
+.spacer{flex:1}
+.userchip{display:flex;align-items:center;gap:8px;background:var(--brand-soft);color:var(--brand-dark);padding:5px 11px 5px 5px;border-radius:999px;font-size:.82rem;font-weight:600;cursor:pointer;border:1px solid #dbeafe}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:.72rem}
+nav.tabs{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:55px;z-index:30;overflow-x:auto;-webkit-overflow-scrolling:touch}
+nav.tabs .wrap{display:flex;gap:4px}
+nav.tabs button{background:none;border:none;padding:13px 12px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
+nav.tabs button.active{color:var(--brand);border-bottom-color:var(--brand)}
+main{padding:20px 0 60px}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
+.card.tight{padding:12px}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:720px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:460px){.g2{grid-template-columns:1fr}}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row.between{justify-content:space-between}
+
+/* Stats */
+.stat{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:var(--shadow)}
+.stat .n{font-size:1.7rem;font-weight:800;letter-spacing:-.03em}
+.stat .l{font-size:.78rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:.74rem;font-weight:700;background:#f1f5f9;color:var(--muted)}
+.badge.ok{background:#dcfce7;color:#15803d}
+.badge.warn{background:#fef3c7;color:#b45309}
+.badge.bad{background:#fee2e2;color:#b91c1c}
+.badge.info{background:#dbeafe;color:#1d4ed8}
+.badge.brand{background:var(--brand-soft);color:var(--brand)}
+
+/* Listen */
+.list-item{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer;transition:.15s}
+.list-item:hover{border-color:var(--brand-2);transform:translateY(-1px)}
+.muted{color:var(--muted)}
+.small{font-size:.82rem}
+.xs{font-size:.75rem}
+.mono{font-variant-numeric:tabular-nums}
+hr{border:none;border-top:1px solid var(--line);margin:14px 0}
+
+/* Auth */
+.auth-wrap{min-height:100dvh;display:grid;place-items:center;padding:20px;position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(59,130,246,.16), transparent 42%),
+    radial-gradient(circle at 88% 82%, rgba(220,38,38,.11), transparent 45%),
+    linear-gradient(180deg,#fbfcff,#eef3fb)}
+.auth-wrap::before{content:"";position:absolute;inset:0;opacity:.5;
+  background-image:linear-gradient(rgba(29,78,216,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(29,78,216,.055) 1px,transparent 1px);
+  background-size:46px 46px}
+.auth-card{width:100%;max-width:415px;background:#fff;border-radius:20px;padding:28px;position:relative;
+  box-shadow:0 24px 70px rgba(29,78,216,.16),0 2px 8px rgba(15,23,42,.06);border:1px solid #e8eefb}
+.auth-card::before{content:"";position:absolute;top:0;left:26px;right:26px;height:3px;border-radius:0 0 4px 4px;
+  background:linear-gradient(90deg,var(--brand),var(--brand-2) 60%,var(--accent))}
+.auth-card h1{text-align:center;color:var(--brand-dark)}
+.auth-sub{text-align:center;color:var(--muted);font-size:.88rem;margin-bottom:20px}
+.field{margin-bottom:13px}
+.switcher{display:flex;background:var(--bg);border-radius:11px;padding:4px;margin-bottom:18px}
+.switcher button{flex:1;background:none;border:none;padding:9px;border-radius:8px;font-weight:700;color:var(--muted)}
+.switcher button.active{background:#fff;color:var(--brand);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.note{background:var(--brand-soft);border:1px solid #bfdbfe;color:var(--brand-dark);padding:10px 12px;border-radius:10px;font-size:.82rem;margin-bottom:14px}
+.err{background:#fee2e2;border:1px solid #fecaca;color:#b91c1c;padding:10px 12px;border-radius:10px;font-size:.85rem;margin-bottom:12px}
+
+/* Begehung */
+.cat{background:#fff;border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;overflow:hidden;box-shadow:var(--shadow)}
+.cat-head{display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;user-select:none}
+.cat-head .ico{font-size:1.3rem}
+.cat-head .t{font-weight:700;flex:1}
+.cat-body{border-top:1px solid var(--line);display:none}
+.cat.open .cat-body{display:block}
+.crit{padding:14px;border-bottom:1px solid #f1f5f9}
+.crit:last-child{border-bottom:none}
+.crit-name{font-weight:600;margin-bottom:2px}
+.crit-hint{font-size:.78rem;color:var(--muted);margin-bottom:9px}
+.pres{display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap}
+.pres button{flex:1;min-width:96px;padding:9px 6px;border:1.5px solid var(--line);background:#fff;border-radius:10px;font-weight:600;font-size:.82rem;color:var(--muted)}
+.pres button.on[data-v="vorhanden"]{background:#dcfce7;border-color:#4ade80;color:#15803d}
+.pres button.on[data-v="nicht_vorhanden"]{background:#fee2e2;border-color:#fca5a5;color:#b91c1c}
+.pres button.on[data-v="nicht_relevant"]{background:#e2e8f0;border-color:#94a3b8;color:#475569}
+.emojis{display:flex;gap:5px;margin-bottom:9px}
+.emojis button{flex:1;padding:8px 2px;border:1.5px solid var(--line);background:#fff;border-radius:10px;font-size:1.35rem;line-height:1.1;transition:.12s}
+.emojis button .lbl{display:block;font-size:.6rem;font-weight:700;color:var(--muted);margin-top:2px}
+.emojis button.on{border-color:var(--brand);background:var(--brand-soft);transform:scale(1.05)}
+.crit-extra{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.chip-toggle{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1.5px solid var(--line);border-radius:999px;background:#fff;font-size:.8rem;font-weight:600;color:var(--muted)}
+.chip-toggle.on{background:#fef3c7;border-color:#fbbf24;color:#b45309}
+.thumb{width:54px;height:54px;border-radius:9px;object-fit:cover;border:1px solid var(--line)}
+.progressbar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.progressbar > i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));border-radius:99px;transition:.3s}
+
+/* Vorlagen-Auswahl */
+.tpl-list{display:flex;flex-direction:column;gap:7px;margin-bottom:8px;max-height:340px;overflow:auto;padding:2px}
+.tpl{display:flex;align-items:center;gap:11px;border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;background:#fff;transition:.12s}
+.tpl:hover{border-color:var(--brand-2)}
+.tpl.on{border-color:var(--brand);background:var(--brand-soft)}
+.tpl input{display:none}
+.tpl .ico{font-size:1.35rem;line-height:1}
+.tpl .txt{flex:1;min-width:0}
+.tpl .txt small{display:block;color:var(--muted);font-size:.75rem;margin-top:2px;line-height:1.4}
+.tpl .cnt{font-weight:800;color:var(--brand);font-size:.95rem;white-space:nowrap}
+.tpl .cnt::after{content:" Punkte";font-size:.62rem;font-weight:600;color:var(--muted)}
+
+/* Ausgeblendetes und ausgeschlossene Bereiche */
+.cat.skipped{opacity:.72;background:#fafafa}
+.cat.skipped .cat-head .t{text-decoration:line-through;text-decoration-color:#cbd5e1}
+.skip-info{padding:12px 14px;background:#fffbeb;border-top:1px solid #fde68a;font-size:.84rem;color:#92400e}
+.hidden-box{padding:10px 14px;background:#f8fafc;border-top:1px dashed var(--line)}
+.hidden-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:.8rem;color:var(--muted)}
+.hidden-row .nm{flex:1;text-decoration:line-through}
+.item-menu{position:relative}
+.item-menu>button{background:none;border:none;color:var(--muted);font-size:1.1rem;padding:2px 7px;border-radius:8px;line-height:1}
+.item-menu>button:hover{background:var(--bg);color:var(--ink)}
+.menu-pop{position:absolute;right:0;top:26px;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 10px 30px rgba(15,23,42,.14);z-index:15;min-width:180px;overflow:hidden}
+.menu-pop button{display:block;width:100%;text-align:left;background:none;border:none;padding:10px 13px;font-size:.85rem;color:var(--ink)}
+.menu-pop button:hover{background:var(--brand-soft)}
+.menu-pop button.warn{color:var(--bad)}
+
+/* Sticky Footer Bar */
+.stickybar{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 0;margin-top:16px;z-index:20;box-shadow:0 -4px 20px rgba(15,23,42,.07)}
+.stickybar .wrap{display:flex;gap:10px;align-items:center}
+
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.55);display:grid;place-items:center;padding:16px;z-index:100;backdrop-filter:blur(3px)}
+.modal{background:#fff;border-radius:18px;width:100%;max-width:560px;max-height:88dvh;overflow:auto;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+.modal h2{margin-bottom:14px}
+
+/* Tabelle */
+table.t{width:100%;border-collapse:collapse;font-size:.88rem}
+table.t th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px;border-bottom:1px solid var(--line)}
+table.t td{padding:10px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+
+/* Verlauf */
+.trend{display:flex;gap:6px;align-items:flex-end;height:70px;padding:6px 0}
+.trend .bar{flex:1;max-width:44px;background:linear-gradient(180deg,var(--brand-2),var(--brand));border-radius:6px 6px 0 0;position:relative;min-height:6px}
+.trend .bar span{position:absolute;top:-17px;left:50%;transform:translateX(-50%);font-size:.68rem;font-weight:700;color:var(--muted)}
+
+@media(max-width:560px){.hide-sm{display:none}.wrap{padding:0 12px}h1{font-size:1.3rem}}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;font-size:.88rem;z-index:200;box-shadow:0 10px 30px rgba(0,0,0,.3);max-width:90vw}
+.loader{width:22px;height:22px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.center-load{display:grid;place-items:center;padding:50px}
+.center-load .loader{border-color:var(--line);border-top-color:var(--brand)}
+.empty{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty .big{font-size:2.4rem;margin-bottom:8px}
+@media print{.topbar,nav.tabs,.stickybar{display:none}}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="view-auth" class="auth-wrap">
+  <div class="auth-card">
+    <div style="text-align:center;margin-bottom:6px">
+      <svg width="62" height="62" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <path d="M32 6 60 27v31a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V27L32 6Z" fill="#eff6ff" stroke="#1d4ed8" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M24 61V40h16v21" stroke="#1d4ed8" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="47" cy="20" r="12" fill="#dc2626"/>
+        <path d="m41.5 20 3.8 4 7.2-7.6" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1>Immo<em style="font-style:normal;color:#dc2626">Check</em></h1>
+    <p class="auth-sub">Sicherheits- und Qualitätskontrolle für Immobilien</p>
+
+    <div class="switcher">
+      <button id="tab-login" class="active" onclick="setAuthMode('login')">Anmelden</button>
+      <button id="tab-signup" onclick="setAuthMode('signup')">Registrieren</button>
+    </div>
+
+    <div id="auth-note" class="note hidden"></div>
+    <div id="auth-err" class="err hidden"></div>
+
+    <form id="auth-form" onsubmit="return doAuth(event)">
+      <div class="field" id="field-name" style="display:none">
+        <label>Vor- und Nachname</label>
+        <input id="in-name" type="text" autocomplete="name" placeholder="Max Mustermann">
+      </div>
+      <div class="field">
+        <label>E-Mail</label>
+        <input id="in-email" type="email" autocomplete="email" required placeholder="name@firma.at">
+      </div>
+      <div class="field">
+        <label>Passwort</label>
+        <input id="in-pass" type="password" autocomplete="current-password" required minlength="6" placeholder="Mindestens 6 Zeichen">
+      </div>
+      <button class="btn full" id="auth-btn" type="submit">Anmelden</button>
+    </form>
+    <p class="xs muted" style="text-align:center;margin:14px 0 0">
+      Die erste Registrierung wird automatisch Administrator.<br>
+      Alle weiteren Konten muss der Administrator freigeben.<br>
+      <a href="#" onclick="showSetup();return false" style="display:inline-block;margin-top:8px">Andere Datenbank verbinden</a>
+    </p>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <div class="wrap">
+      <div class="logo">
+        <span class="mark">
+          <svg width="17" height="17" viewBox="0 0 64 64" fill="none"><path d="M32 6 60 27v31a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V27L32 6Z" fill="#fff"/></svg>
+        </span>
+        Immo<em>Check</em>
+      </div>
+      <div class="spacer"></div>
+      <div class="userchip" onclick="go('profil')">
+        <div class="avatar" id="u-initials">–</div>
+        <span id="u-name" class="hide-sm">…</span>
+      </div>
+      <button class="btn ghost" onclick="logout()" title="Abmelden">⏻</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <div class="wrap" id="nav-tabs"></div>
+  </nav>
+
+  <main>
+    <div class="wrap" id="view"></div>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+
+<script>
+/* =========================================================
+   KONFIGURATION
+   ========================================================= */
+/* Fest eingebaute Verbindung. Leer lassen, dann fragt die App beim ersten Start danach. */
+const SUPABASE_URL = "__SUPABASE_URL__";
+const SUPABASE_KEY = "__SUPABASE_KEY__";
+
+const CONF_STORE = "immocheck_verbindung";
+function ladeVerbindung(){
+  try{
+    const c = JSON.parse(localStorage.getItem(CONF_STORE) || "null");
+    if(c && c.url && c.key) return c;
+  }catch(e){}
+  if(SUPABASE_URL && SUPABASE_KEY && !SUPABASE_URL.startsWith("__")) return {url:SUPABASE_URL, key:SUPABASE_KEY};
+  return null;
+}
+const CONF = ladeVerbindung();
+const sb = CONF ? window.supabase.createClient(CONF.url, CONF.key, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+}) : null;
+
+/* Bewertungsskala */
+const SCALE = [
+  {v:1, e:"😡", l:"Sehr schlecht", c:"#dc2626"},
+  {v:2, e:"🙁", l:"Schlecht",      c:"#f97316"},
+  {v:3, e:"😐", l:"Mittel",        c:"#eab308"},
+  {v:4, e:"🙂", l:"Gut",           c:"#65a30d"},
+  {v:5, e:"😍", l:"Sehr gut",      c:"#16a34a"}
+];
+const OBJEKTTYPEN = [
+  ["einzimmerwohnung","Einzimmerwohnung"],
+  ["wohnung","Wohnung"],
+  ["einfamilienhaus","Einfamilienhaus"],
+  ["doppelhaus","Doppelhaushälfte"],
+  ["reihenhaus","Reihenhaus"],
+  ["mehrfamilienhaus","Mehrfamilienhaus"],
+  ["wohnanlage","Wohnanlage / mehrere Gebäude"],
+  ["gewerbe","Gewerbeobjekt"],
+  ["sonstiges","Sonstiges"]
+];
+const PRIOS = [
+  ["keine","Keine"], ["niedrig","Niedrig"], ["mittel","Mittel"], ["hoch","Hoch"], ["kritisch","Kritisch"]
+];
+/* Objekttypen, die als Gebäude mit mehreren Einheiten gelten */
+const MEHRPARTEIEN = ["mehrfamilienhaus","wohnanlage"];
+
+/* Globaler Zustand */
+const S = {
+  user:null, profile:null, view:"dashboard", params:{},
+  properties:[], categories:[], criteria:[], profiles:[],
+  templates:[], templateCriteria:{}
+};
+
+/* =========================================================
+   HELFER
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const el = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtDate = d => d ? new Date(d).toLocaleDateString("de-AT",{day:"2-digit",month:"2-digit",year:"numeric"}) : "–";
+const fmtDateTime = d => d ? new Date(d).toLocaleString("de-AT",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "–";
+const objLabel = k => (OBJEKTTYPEN.find(t=>t[0]===k)||[,k])[1];
+const scaleOf = v => SCALE.find(s=>s.v===Number(v)) || null;
+
+function toast(msg, ms=2600){
+  const t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), ms);
+}
+function loading(on, target="#view"){
+  if(on) $(target).innerHTML = '<div class="center-load"><div class="loader"></div></div>';
+}
+function scoreColor(s){
+  if(s==null) return "#94a3b8";
+  if(s>=4.5) return "#16a34a"; if(s>=3.5) return "#65a30d";
+  if(s>=2.5) return "#eab308"; if(s>=1.5) return "#f97316"; return "#dc2626";
+}
+function scoreBadge(s){
+  if(s==null) return '<span class="badge">Keine Bewertung</span>';
+  const n = Number(s).toFixed(1);
+  const cls = s>=4 ? "ok" : s>=3 ? "warn" : "bad";
+  const em = scaleOf(Math.round(s));
+  return `<span class="badge ${cls}">${em?em.e:""} ${n} / 5</span>`;
+}
+function initials(name, email){
+  const n = (name||email||"?").trim();
+  const p = n.split(/[\s@.]+/).filter(Boolean);
+  return ((p[0]||"?")[0] + (p[1]? p[1][0] : "")).toUpperCase();
+}
+function openModal(html){
+  el("modal-root").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
+}
+function closeModal(){ el("modal-root").innerHTML = ""; }
+
+/* =========================================================
+   AUTHENTIFIZIERUNG
+   ========================================================= */
+let authMode = "login";
+function setAuthMode(m){
+  authMode = m;
+  el("tab-login").classList.toggle("active", m==="login");
+  el("tab-signup").classList.toggle("active", m==="signup");
+  el("field-name").style.display = m==="signup" ? "block" : "none";
+  el("auth-btn").textContent = m==="signup" ? "Konto erstellen" : "Anmelden";
+  el("in-pass").setAttribute("autocomplete", m==="signup" ? "new-password" : "current-password");
+  el("auth-err").classList.add("hidden");
+}
+function authError(msg){
+  const e = el("auth-err"); e.textContent = msg; e.classList.remove("hidden");
+}
+async function doAuth(ev){
+  ev.preventDefault();
+  const btn = el("auth-btn"); const old = btn.innerHTML;
+  btn.innerHTML = '<div class="loader"></div>'; btn.disabled = true;
+  el("auth-err").classList.add("hidden");
+  const email = el("in-email").value.trim();
+  const pass  = el("in-pass").value;
+  const name  = el("in-name").value.trim();
+  try{
+    if(authMode==="signup"){
+      const {error} = await sb.auth.signUp({email, password:pass, options:{data:{full_name:name}}});
+      if(error) throw error;
+      const {error:e2} = await sb.auth.signInWithPassword({email, password:pass});
+      if(e2) throw e2;
+    } else {
+      const {error} = await sb.auth.signInWithPassword({email, password:pass});
+      if(error) throw error;
+    }
+    await boot();
+  }catch(err){
+    let m = err.message || "Unbekannter Fehler";
+    if(/Invalid login/i.test(m)) m = "E-Mail oder Passwort stimmt nicht.";
+    if(/already registered|User already/i.test(m)) m = "Diese E-Mail ist bereits registriert. Bitte anmelden.";
+    if(/Password should be/i.test(m)) m = "Das Passwort muss mindestens 6 Zeichen haben.";
+    if(/Email not confirmed/i.test(m)) m = "Konto noch nicht freigeschaltet. Bitte kurz beim Administrator melden.";
+    authError(m);
+  }finally{
+    btn.innerHTML = old; btn.disabled = false;
+  }
+}
+async function logout(){
+  await sb.auth.signOut();
+  location.reload();
+}
+
+/* =========================================================
+   START / STAMMDATEN LADEN
+   ========================================================= */
+async function boot(){
+  const {data:{session}} = await sb.auth.getSession();
+  if(!session){ el("view-auth").classList.remove("hidden"); el("app").classList.add("hidden"); return; }
+  S.user = session.user;
+
+  let prof = null;
+  for(let versuch = 0; versuch < 4 && !prof; versuch++){
+    const r = await sb.from("profiles").select("*").eq("id", S.user.id).maybeSingle();
+    prof = r.data;
+    if(!prof) await new Promise(r => setTimeout(r, 600));
+  }
+  S.profile = prof;
+
+  if(!prof){
+    showGate("problem");
+    return;
+  }
+  if(prof.status !== "aktiv"){
+    showGate(prof.status, prof);
+    return;
+  }
+
+  el("view-auth").classList.add("hidden");
+  el("app").classList.remove("hidden");
+  el("u-name").textContent = prof?.full_name || S.user.email;
+  el("u-initials").textContent = initials(prof?.full_name, S.user.email);
+
+  renderTabs();
+  await loadCatalog();
+  go(S.view || "dashboard");
+}
+
+/* Zwischenbildschirm für Nutzer ohne Freigabe */
+function showGate(art, prof){
+  el("app").classList.add("hidden");
+  el("view-auth").classList.remove("hidden");
+  const inhalte = {
+    wartend: {
+      icon: `<svg width="58" height="58" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="27" fill="#eff6ff" stroke="#1d4ed8" stroke-width="3"/><path d="M32 17v16l11 7" stroke="#1d4ed8" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      titel: "Fast geschafft",
+      text: "Dein Konto wurde angelegt. Aus Datenschutzgründen muss dich der Administrator noch freischalten, bevor du Immobilien und Protokolle sehen kannst.",
+      hinweis: "Sag deinem Administrator kurz Bescheid. Sobald er dich freigegeben hat, genügt ein Klick auf Erneut prüfen."
+    },
+    gesperrt: {
+      icon: `<svg width="58" height="58" viewBox="0 0 64 64" fill="none"><rect x="13" y="28" width="38" height="27" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="3"/><path d="M22 28v-8a10 10 0 0 1 20 0v8" stroke="#dc2626" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="41" r="3.6" fill="#dc2626"/></svg>`,
+      titel: "Zugang gesperrt",
+      text: "Dein Zugang wurde vom Administrator deaktiviert.",
+      hinweis: "Wende dich bitte direkt an den Administrator, wenn das ein Irrtum ist."
+    },
+    problem: {
+      icon: `<svg width="58" height="58" viewBox="0 0 64 64" fill="none"><path d="M32 9 60 55H4L32 9Z" fill="#fffbeb" stroke="#f59e0b" stroke-width="3" stroke-linejoin="round"/><path d="M32 26v11" stroke="#f59e0b" stroke-width="3.4" stroke-linecap="round"/><circle cx="32" cy="45" r="2.6" fill="#f59e0b"/></svg>`,
+      titel: "Konto wird noch eingerichtet",
+      text: "Dein Profil konnte nicht geladen werden. In der Regel hilft ein erneuter Versuch nach ein paar Sekunden.",
+      hinweis: "Bleibt es dabei, melde dich beim Administrator."
+    }
+  };
+  const c = inhalte[art] || inhalte.problem;
+  el("view-auth").innerHTML = `
+    <div class="auth-card" style="text-align:center">
+      <div style="margin-bottom:10px">${c.icon}</div>
+      <h1 style="margin-bottom:8px">${c.titel}</h1>
+      <p class="small muted" style="margin:0 0 16px">${c.text}</p>
+      ${prof ? `<div class="note" style="text-align:left">Angemeldet als <strong>${esc(prof.full_name||prof.email)}</strong><br><span class="xs">${esc(prof.email)}</span></div>` : ""}
+      <p class="xs muted" style="margin:0 0 18px">${c.hinweis}</p>
+      <button class="btn full" onclick="location.reload()">Erneut prüfen</button>
+      <button class="btn sec full" style="margin-top:9px" onclick="logout()">Abmelden</button>
+    </div>`;
+}
+
+function renderTabs(){
+  const tabs = [
+    ["dashboard","Übersicht"],
+    ["properties","Immobilien"],
+    ["templates","Vorlagen"],
+    ["catalog","Prüfkatalog"]
+  ];
+  if(S.profile?.role === "admin") tabs.push(["team","Team"]);
+  tabs.push(["profil","Mein Konto"]);
+  el("nav-tabs").innerHTML = tabs.map(([k,l]) =>
+    `<button data-tab="${k}" class="${S.view===k?'active':''}" onclick="go('${k}')">${l}</button>`).join("");
+}
+function markTab(){
+  document.querySelectorAll("#nav-tabs button").forEach(b =>
+    b.classList.toggle("active", b.dataset.tab === S.view));
+}
+
+async function loadCatalog(){
+  const [cats, crits, tpls, tcs] = await Promise.all([
+    sb.from("categories").select("*").eq("active", true).order("sort_order"),
+    sb.from("criteria").select("*").eq("active", true).order("sort_order"),
+    sb.from("templates").select("*").eq("active", true).order("sort_order"),
+    sb.from("template_criteria").select("*")
+  ]);
+  S.categories = cats.data || [];
+  S.criteria = crits.data || [];
+  S.templates = tpls.data || [];
+  S.templateCriteria = {};
+  (tcs.data || []).forEach(r => {
+    (S.templateCriteria[r.template_id] = S.templateCriteria[r.template_id] || new Set()).add(r.criterion_id);
+  });
+}
+function tplPunkte(id){
+  const set = S.templateCriteria[id];
+  if(!set) return [];
+  return S.criteria.filter(c => set.has(c.id));
+}
+
+/* =========================================================
+   ROUTER
+   ========================================================= */
+function go(view, params={}){
+  S.view = view; S.params = params;
+  markTab();
+  window.scrollTo({top:0});
+  const R = {
+    dashboard: viewDashboard,
+    properties: viewProperties,
+    property: viewProperty,
+    inspection: viewInspection,
+    inspectionResult: viewInspectionResult,
+    templates: viewTemplates,
+    catalog: viewCatalog,
+    team: viewTeam,
+    profil: viewProfil
+  };
+  (R[view] || viewDashboard)();
+}
+
+/* =========================================================
+   ÜBERSICHT
+   ========================================================= */
+async function viewDashboard(){
+  loading(true);
+  const [props, insp] = await Promise.all([
+    sb.from("properties").select("*").eq("status","aktiv").order("created_at",{ascending:false}),
+    sb.from("inspections").select("*").order("inspection_date",{ascending:false}).limit(200)
+  ]);
+  S.properties = props.data || [];
+  const list = insp.data || [];
+  const done = list.filter(i=>i.status==="abgeschlossen");
+  const open = list.filter(i=>i.status==="offen");
+  const avg = done.length ? done.reduce((a,b)=>a+(Number(b.score)||0),0)/done.filter(d=>d.score!=null).length : null;
+  const crit = done.reduce((a,b)=>a+(b.critical_count||0),0);
+
+  const nameOf = id => (S.properties.find(p=>p.id===id)||{}).name || "Unbekanntes Objekt";
+
+  $("#view").innerHTML = `
+    <div class="row between" style="margin-bottom:14px">
+      <h1>Übersicht</h1>
+      <button class="btn" onclick="editProperty()">+ Immobilie</button>
+    </div>
+
+    <div class="grid g4" style="margin-bottom:16px">
+      <div class="stat"><div class="l">Immobilien</div><div class="n">${S.properties.length}</div></div>
+      <div class="stat"><div class="l">Begehungen</div><div class="n">${done.length}</div></div>
+      <div class="stat"><div class="l">Offen</div><div class="n" style="color:${open.length?'#f59e0b':'inherit'}">${open.length}</div></div>
+      <div class="stat"><div class="l">Kritische Mängel</div><div class="n" style="color:${crit?'#dc2626':'inherit'}">${crit}</div></div>
+    </div>
+
+    ${avg!=null && !isNaN(avg) ? `<div class="card">
+      <div class="row between">
+        <div><h3 style="margin:0">Durchschnittliche Bewertung</h3><div class="small muted">Über alle abgeschlossenen Begehungen</div></div>
+        <div style="font-size:1.6rem;font-weight:800;color:${scoreColor(avg)}">${scaleOf(Math.round(avg))?.e||""} ${avg.toFixed(1)}</div>
+      </div>
+    </div>` : ""}
+
+    ${open.length ? `<div class="card">
+      <h3>Offene Begehungen</h3>
+      ${open.slice(0,5).map(i=>`
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="go('inspection',{id:'${i.id}'})">
+          <div><strong>${esc(nameOf(i.property_id))}</strong><div class="xs muted">${esc(i.title||"Begehung")} · ${fmtDate(i.inspection_date)}</div></div>
+          <span class="badge warn">fortsetzen →</span>
+        </div>`).join("")}
+    </div>` : ""}
+
+    <div class="card">
+      <div class="row between"><h3 style="margin:0">Letzte Begehungen</h3><a class="small" onclick="go('properties')" style="cursor:pointer">Alle Immobilien →</a></div>
+      ${done.length ? `<table class="t"><thead><tr><th>Objekt</th><th>Datum</th><th>Bewertung</th><th></th></tr></thead><tbody>
+        ${done.slice(0,8).map(i=>`<tr style="cursor:pointer" onclick="go('inspectionResult',{id:'${i.id}'})">
+          <td><strong>${esc(nameOf(i.property_id))}</strong><div class="xs muted">${esc(i.title||"")}</div></td>
+          <td class="mono">${fmtDate(i.inspection_date)}</td>
+          <td>${scoreBadge(i.score)}</td>
+          <td class="xs muted">${i.critical_count? `<span class="badge bad">${i.critical_count} kritisch</span>`:""}</td>
+        </tr>`).join("")}
+      </tbody></table>` : `<div class="empty"><div class="big">📋</div>Noch keine abgeschlossene Begehung.</div>`}
+    </div>
+  `;
+}
+
+/* =========================================================
+   IMMOBILIEN
+   ========================================================= */
+async function viewProperties(){
+  loading(true);
+  const {data} = await sb.from("properties").select("*").order("name");
+  S.properties = data || [];
+  const insp = await sb.from("inspections").select("property_id,score,inspection_date,status").order("inspection_date",{ascending:false});
+  const last = {};
+  (insp.data||[]).forEach(i => { if(!last[i.property_id]) last[i.property_id] = i; });
+
+  const render = (q="", showArchived=false) => {
+    const items = S.properties.filter(p =>
+      (showArchived ? true : p.status==="aktiv") &&
+      (!q || (p.name+" "+(p.street||"")+" "+(p.city||"")+" "+(p.zip||"")).toLowerCase().includes(q.toLowerCase()))
+    );
+    el("prop-list").innerHTML = items.length ? items.map(p=>{
+      const l = last[p.id];
+      return `<div class="list-item" onclick="go('property',{id:'${p.id}'})">
+        <div class="row between">
+          <div style="min-width:0">
+            <div class="row" style="gap:7px">
+              <strong>${esc(p.name)}</strong>
+              <span class="badge brand">${esc(objLabel(p.object_type))}</span>
+              ${p.status==="archiviert"?'<span class="badge">archiviert</span>':""}
+            </div>
+            <div class="small muted">${esc([p.street,p.house_number].filter(Boolean).join(" "))}${p.zip||p.city?", ":""}${esc([p.zip,p.city].filter(Boolean).join(" "))}</div>
+            <div class="xs muted">${p.units_count>1?`${p.units_count} Einheiten · `:""}${p.build_year?`Baujahr ${p.build_year} · `:""}${l?`Letzte Prüfung ${fmtDate(l.inspection_date)}`:"Noch nicht geprüft"}</div>
+          </div>
+          <div style="text-align:right">${l && l.score!=null ? scoreBadge(l.score) : (l&&l.status==="offen"?'<span class="badge warn">offen</span>':'<span class="badge">neu</span>')}</div>
+        </div>
+      </div>`;
+    }).join("") : `<div class="empty"><div class="big">🏘️</div>Keine Immobilie gefunden.<br><button class="btn sm" style="margin-top:12px" onclick="editProperty()">Erste Immobilie anlegen</button></div>`;
+  };
+
+  $("#view").innerHTML = `
+    <div class="row between" style="margin-bottom:14px">
+      <h1>Immobilien</h1>
+      <button class="btn" onclick="editProperty()">+ Immobilie</button>
+    </div>
+    <div class="card tight">
+      <div class="row">
+        <input id="prop-search" placeholder="🔍 Suche nach Name, Adresse, Ort …" style="flex:1;min-width:200px" oninput="window.__renderProps(this.value, document.getElementById('show-arch').checked)">
+        <label class="row xs" style="margin:0;gap:6px;white-space:nowrap"><input type="checkbox" id="show-arch" style="width:auto" onchange="window.__renderProps(document.getElementById('prop-search').value, this.checked)"> Archivierte zeigen</label>
+      </div>
+    </div>
+    <div id="prop-list"></div>
+  `;
+  window.__renderProps = render;
+  render();
+}
+
+function editProperty(id){
+  const p = id ? S.properties.find(x=>x.id===id) : {};
+  const f = (k, dflt="") => esc(p?.[k] ?? dflt);
+  openModal(`
+    <h2>${id?"Immobilie bearbeiten":"Neue Immobilie"}</h2>
+    <form onsubmit="return saveProperty(event, ${id?`'${id}'`:"null"})">
+      <div class="field"><label>Bezeichnung *</label><input name="name" required value="${f("name")}" placeholder="z. B. Hauptstraße 12, Wohnhaus"></div>
+      <div class="field"><label>Objektart *</label><select name="object_type">${OBJEKTTYPEN.map(([k,l])=>`<option value="${k}" ${p?.object_type===k?"selected":""}>${l}</option>`).join("")}</select></div>
+      <div class="grid g2">
+        <div class="field"><label>Straße</label><input name="street" value="${f("street")}"></div>
+        <div class="field"><label>Nr.</label><input name="house_number" value="${f("house_number")}"></div>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>PLZ</label><input name="zip" value="${f("zip")}"></div>
+        <div class="field"><label>Ort</label><input name="city" value="${f("city")}"></div>
+      </div>
+      <div class="grid g3">
+        <div class="field"><label>Baujahr</label><input name="build_year" type="number" value="${f("build_year")}"></div>
+        <div class="field"><label>Einheiten</label><input name="units_count" type="number" min="1" value="${f("units_count","1")}"></div>
+        <div class="field"><label>Geschosse</label><input name="floors" type="number" value="${f("floors")}"></div>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>Wohnfläche m²</label><input name="living_area" type="number" step="0.01" value="${f("living_area")}"></div>
+        <div class="field"><label>Grundstück m²</label><input name="plot_area" type="number" step="0.01" value="${f("plot_area")}"></div>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>Heizungsart</label><input name="heating_type" value="${f("heating_type")}" placeholder="Gas, Wärmepumpe, Fernwärme …"></div>
+        <div class="field"><label>Energieklasse</label><input name="energy_class" value="${f("energy_class")}" placeholder="A, B, C …"></div>
+      </div>
+      <div class="row" style="gap:16px;margin-bottom:12px">
+        <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_basement" style="width:auto" ${p?.has_basement?"checked":""}> Keller</label>
+        <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_elevator" style="width:auto" ${p?.has_elevator?"checked":""}> Aufzug</label>
+        <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_garden" style="width:auto" ${p?.has_garden?"checked":""}> Garten</label>
+        <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_parking" style="width:auto" ${p?.has_parking?"checked":""}> Stellplätze</label>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>Eigentümer</label><input name="owner_name" value="${f("owner_name")}"></div>
+        <div class="field"><label>Ansprechpartner vor Ort</label><input name="contact_name" value="${f("contact_name")}"></div>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>Telefon</label><input name="contact_phone" value="${f("contact_phone")}"></div>
+        <div class="field"><label>E-Mail</label><input name="contact_email" value="${f("contact_email")}"></div>
+      </div>
+      <div class="field"><label>Beschreibung / Besonderheiten</label><textarea name="description" placeholder="Zustand, Historie, bekannte Themen …">${f("description")}</textarea></div>
+      ${id?`<div class="field"><label>Status</label><select name="status"><option value="aktiv" ${p.status==="aktiv"?"selected":""}>Aktiv</option><option value="archiviert" ${p.status==="archiviert"?"selected":""}>Archiviert</option></select></div>`:""}
+      <div class="row" style="margin-top:8px">
+        <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+        <div class="spacer"></div>
+        ${id?`<button type="button" class="btn danger sm" onclick="deleteProperty('${id}')">Löschen</button>`:""}
+        <button class="btn" type="submit">Speichern</button>
+      </div>
+    </form>
+  `);
+}
+
+async function saveProperty(ev, id){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const num = v => v==="" || v==null ? null : Number(v);
+  const rec = {
+    name: fd.get("name"), object_type: fd.get("object_type"),
+    street: fd.get("street")||null, house_number: fd.get("house_number")||null,
+    zip: fd.get("zip")||null, city: fd.get("city")||null,
+    build_year: num(fd.get("build_year")), units_count: num(fd.get("units_count"))||1,
+    floors: num(fd.get("floors")), living_area: num(fd.get("living_area")), plot_area: num(fd.get("plot_area")),
+    heating_type: fd.get("heating_type")||null, energy_class: fd.get("energy_class")||null,
+    has_basement: !!fd.get("has_basement"), has_elevator: !!fd.get("has_elevator"),
+    has_garden: !!fd.get("has_garden"), has_parking: !!fd.get("has_parking"),
+    owner_name: fd.get("owner_name")||null, contact_name: fd.get("contact_name")||null,
+    contact_phone: fd.get("contact_phone")||null, contact_email: fd.get("contact_email")||null,
+    description: fd.get("description")||null
+  };
+  if(id) rec.status = fd.get("status") || "aktiv"; else rec.created_by = S.user.id;
+
+  const q = id ? sb.from("properties").update(rec).eq("id", id) : sb.from("properties").insert(rec).select().single();
+  const {data, error} = await q;
+  if(error){ toast("Fehler: "+error.message, 4000); return false; }
+  closeModal(); toast("Gespeichert ✓");
+  if(id) go("property",{id}); else go("property",{id:data.id});
+  return false;
+}
+
+async function deleteProperty(id){
+  if(!confirm("Immobilie inklusive aller Begehungen und Protokolle unwiderruflich löschen?")) return;
+  const {error} = await sb.from("properties").delete().eq("id", id);
+  if(error){ toast("Fehler: "+error.message, 4000); return; }
+  closeModal(); toast("Gelöscht"); go("properties");
+}
+
+/* =========================================================
+   IMMOBILIE: DETAIL + VERLAUF
+   ========================================================= */
+async function viewProperty(){
+  const id = S.params.id;
+  loading(true);
+  const [pr, un, ins] = await Promise.all([
+    sb.from("properties").select("*").eq("id",id).maybeSingle(),
+    sb.from("units").select("*").eq("property_id",id).order("label"),
+    sb.from("inspections").select("*").eq("property_id",id).order("inspection_date",{ascending:false})
+  ]);
+  const p = pr.data;
+  if(!p){ $("#view").innerHTML = '<div class="empty">Immobilie nicht gefunden.</div>'; return; }
+  const units = un.data || [];
+  const list = ins.data || [];
+  const done = list.filter(i=>i.status==="abgeschlossen" && i.score!=null);
+  const trend = done.slice(0,10).reverse();
+  const unitName = uid => (units.find(u=>u.id===uid)||{}).label;
+
+  const infoRow = (l,v) => v ? `<div><div class="xs muted">${l}</div><div>${esc(v)}</div></div>` : "";
+
+  $("#view").innerHTML = `
+    <button class="btn ghost sm" onclick="go('properties')">← Alle Immobilien</button>
+    <div class="row between" style="margin:6px 0 14px">
+      <div>
+        <h1 style="margin-bottom:2px">${esc(p.name)}</h1>
+        <div class="muted small">${esc([[p.street,p.house_number].filter(Boolean).join(" "), [p.zip,p.city].filter(Boolean).join(" ")].filter(Boolean).join(", "))||"Keine Adresse hinterlegt"}</div>
+      </div>
+      <div class="row">
+        <button class="btn sec sm" onclick="editProperty('${p.id}')">Bearbeiten</button>
+        <button class="btn" onclick="startInspection('${p.id}')">+ Neue Begehung</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="grid g4">
+        ${infoRow("Objektart", objLabel(p.object_type))}
+        ${infoRow("Baujahr", p.build_year)}
+        ${infoRow("Einheiten", p.units_count)}
+        ${infoRow("Geschosse", p.floors)}
+        ${infoRow("Wohnfläche", p.living_area ? p.living_area+" m²" : "")}
+        ${infoRow("Grundstück", p.plot_area ? p.plot_area+" m²" : "")}
+        ${infoRow("Heizung", p.heating_type)}
+        ${infoRow("Energieklasse", p.energy_class)}
+        ${infoRow("Eigentümer", p.owner_name)}
+        ${infoRow("Kontakt", p.contact_name)}
+        ${infoRow("Telefon", p.contact_phone)}
+        ${infoRow("E-Mail", p.contact_email)}
+      </div>
+      ${[p.has_basement&&"Keller",p.has_elevator&&"Aufzug",p.has_garden&&"Garten",p.has_parking&&"Stellplätze"].filter(Boolean).length?
+        `<hr><div class="row">${[p.has_basement&&"🕳️ Keller",p.has_elevator&&"🛗 Aufzug",p.has_garden&&"🌳 Garten",p.has_parking&&"🅿️ Stellplätze"].filter(Boolean).map(x=>`<span class="badge">${x}</span>`).join("")}</div>`:""}
+      ${p.description?`<hr><div class="small">${esc(p.description).replace(/\n/g,"<br>")}</div>`:""}
+    </div>
+
+    <div class="card">
+      <div class="row between"><h3 style="margin:0">Einheiten / Wohnungen</h3><button class="btn sec sm" onclick="editUnit('${p.id}')">+ Einheit</button></div>
+      ${units.length? `<table class="t"><thead><tr><th>Bezeichnung</th><th>Geschoss</th><th>Zimmer</th><th>m²</th><th>Mieter</th><th></th></tr></thead><tbody>
+        ${units.map(u=>`<tr>
+          <td><strong>${esc(u.label)}</strong></td><td>${esc(u.floor||"–")}</td><td>${esc(u.rooms??"–")}</td><td>${esc(u.area??"–")}</td><td>${esc(u.tenant_name||"–")}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="btn ghost sm" onclick="editUnit('${p.id}','${u.id}')">✎</button>
+            <button class="btn sec sm" onclick="startInspection('${p.id}','${u.id}')">Prüfen</button>
+          </td></tr>`).join("")}
+      </tbody></table>` : `<div class="small muted">Noch keine einzelnen Einheiten erfasst. Für Mehrfamilienhäuser sinnvoll, damit du jede Wohnung separat prüfen kannst.</div>`}
+    </div>
+
+    ${trend.length>1?`<div class="card">
+      <h3>Bewertungsverlauf</h3>
+      <div class="trend">${trend.map(i=>`<div class="bar" style="height:${(Number(i.score)/5*100)}%;background:${scoreColor(i.score)}" title="${fmtDate(i.inspection_date)}"><span>${Number(i.score).toFixed(1)}</span></div>`).join("")}</div>
+      <div class="row" style="justify-content:space-between"><span class="xs muted">${fmtDate(trend[0].inspection_date)}</span><span class="xs muted">${fmtDate(trend[trend.length-1].inspection_date)}</span></div>
+    </div>`:""}
+
+    <div class="card">
+      <h3>Verlauf aller Begehungen (${list.length})</h3>
+      ${list.length? `<table class="t"><thead><tr><th>Datum</th><th>Titel / Umfang</th><th>Prüfer</th><th>Bewertung</th><th>Mängel</th><th></th></tr></thead><tbody>
+        ${list.map(i=>`<tr>
+          <td class="mono">${fmtDate(i.inspection_date)}</td>
+          <td><strong>${esc(i.title||"Begehung")}</strong>${i.unit_id?`<div class="xs muted">Einheit: ${esc(unitName(i.unit_id)||"–")}</div>`:""}</td>
+          <td class="small">${esc(i.inspector_name||"–")}</td>
+          <td>${i.status==="offen"?'<span class="badge warn">in Arbeit</span>':scoreBadge(i.score)}</td>
+          <td>${i.critical_count?`<span class="badge bad">${i.critical_count} kritisch</span>`:""} ${i.defect_count?`<span class="badge warn">${i.defect_count} Mängel</span>`:""}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="btn sec sm" onclick="go('${i.status==="offen"?"inspection":"inspectionResult"}',{id:'${i.id}'})">${i.status==="offen"?"Fortsetzen":"Ansehen"}</button>
+            ${i.status!=="offen"?`<button class="btn sm" onclick="event.stopPropagation();makePdf('${i.id}')">PDF</button>`:""}
+          </td></tr>`).join("")}
+      </tbody></table>` : `<div class="empty"><div class="big">🔍</div>Noch keine Begehung durchgeführt.<br><button class="btn sm" style="margin-top:12px" onclick="startInspection('${p.id}')">Erste Begehung starten</button></div>`}
+    </div>
+  `;
+}
+
+function editUnit(propId, unitId){
+  const load = async () => {
+    let u = {};
+    if(unitId){ const r = await sb.from("units").select("*").eq("id",unitId).maybeSingle(); u = r.data||{}; }
+    const f = k => esc(u[k] ?? "");
+    openModal(`
+      <h2>${unitId?"Einheit bearbeiten":"Neue Einheit"}</h2>
+      <form onsubmit="return saveUnit(event,'${propId}',${unitId?`'${unitId}'`:"null"})">
+        <div class="field"><label>Bezeichnung *</label><input name="label" required value="${f("label")}" placeholder="z. B. Top 3 oder EG links"></div>
+        <div class="grid g3">
+          <div class="field"><label>Geschoss</label><input name="floor" value="${f("floor")}" placeholder="EG, 1. OG"></div>
+          <div class="field"><label>Zimmer</label><input name="rooms" type="number" step="0.5" value="${f("rooms")}"></div>
+          <div class="field"><label>Fläche m²</label><input name="area" type="number" step="0.01" value="${f("area")}"></div>
+        </div>
+        <div class="grid g2">
+          <div class="field"><label>Mieter</label><input name="tenant_name" value="${f("tenant_name")}"></div>
+          <div class="field"><label>Mieter seit</label><input name="tenant_since" type="date" value="${f("tenant_since")}"></div>
+        </div>
+        <div class="field"><label>Notiz</label><textarea name="notes">${f("notes")}</textarea></div>
+        <div class="row">
+          <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+          <div class="spacer"></div>
+          ${unitId?`<button type="button" class="btn danger sm" onclick="deleteUnit('${unitId}','${propId}')">Löschen</button>`:""}
+          <button class="btn" type="submit">Speichern</button>
+        </div>
+      </form>`);
+  };
+  load();
+}
+async function saveUnit(ev, propId, unitId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const num = v => v===""||v==null ? null : Number(v);
+  const rec = {property_id:propId, label:fd.get("label"), floor:fd.get("floor")||null,
+    rooms:num(fd.get("rooms")), area:num(fd.get("area")), tenant_name:fd.get("tenant_name")||null,
+    tenant_since:fd.get("tenant_since")||null, notes:fd.get("notes")||null};
+  const {error} = unitId ? await sb.from("units").update(rec).eq("id",unitId) : await sb.from("units").insert(rec);
+  if(error){ toast("Fehler: "+error.message,4000); return false; }
+  closeModal(); toast("Gespeichert ✓"); go("property",{id:propId});
+  return false;
+}
+async function deleteUnit(unitId, propId){
+  if(!confirm("Einheit löschen?")) return;
+  await sb.from("units").delete().eq("id",unitId);
+  closeModal(); go("property",{id:propId});
+}
+
+/* =========================================================
+   BEGEHUNG STARTEN
+   ========================================================= */
+async function startInspection(propId, unitId){
+  const p = (await sb.from("properties").select("*").eq("id",propId).maybeSingle()).data;
+  const units = (await sb.from("units").select("*").eq("property_id",propId).order("label")).data || [];
+  const today = new Date().toISOString().slice(0,10);
+
+  const passend = S.templates.filter(t => (t.object_types||[]).includes(p.object_type));
+  const andere  = S.templates.filter(t => !(t.object_types||[]).includes(p.object_type));
+  const vorwahl = (unitId && S.templates.find(t => t.name === "Wohnung")) || passend[0] || S.templates[0];
+  if(!vorwahl){ toast("Es ist keine Vorlage vorhanden. Lege zuerst unter Vorlagen einen Fragenkatalog an.", 5000); return; }
+
+  const karte = (t, empfohlen) => `
+    <label class="tpl ${t.id===vorwahl.id?"on":""}">
+      <input type="radio" name="template_id" value="${t.id}" ${t.id===vorwahl.id?"checked":""} onchange="waehleTpl(this)">
+      <span class="ico">${t.icon||"📋"}</span>
+      <span class="txt">
+        <strong>${esc(t.name)}</strong>
+        ${empfohlen?'<span class="badge brand xs">passt zur Objektart</span>':""}
+        ${t.is_system?"":'<span class="badge info xs">eigen</span>'}
+        <small>${esc(t.description||"")}</small>
+      </span>
+      <span class="cnt">${tplPunkte(t.id).length}</span>
+    </label>`;
+
+  openModal(`
+    <h2>Neue Begehung</h2>
+    <div class="small muted" style="margin:-8px 0 14px">${esc(p.name)} · ${esc(objLabel(p.object_type))}</div>
+    <form onsubmit="return createInspection(event,'${propId}')">
+      <div class="grid g2">
+        <div class="field"><label>Datum *</label><input name="inspection_date" type="date" required value="${today}"></div>
+        <div class="field"><label>Titel</label><input name="title" placeholder="z. B. Halbjahres-Check" value="Sicherheits- und Qualitätscheck"></div>
+      </div>
+
+      <label>Fragenkatalog *</label>
+      <div class="tpl-list">
+        ${passend.map(t=>karte(t,true)).join("")}
+        ${andere.length?`<div class="xs muted" style="padding:8px 2px 4px">Weitere Kataloge</div>`:""}
+        ${andere.map(t=>karte(t,false)).join("")}
+      </div>
+      <div class="xs muted" style="margin:-4px 0 14px">
+        Einzelne Fragen und ganze Bereiche kannst du während der Begehung jederzeit ausblenden oder ergänzen.
+        Eigene Kataloge legst du unter <strong>Vorlagen</strong> an.
+      </div>
+
+      <div class="field">
+        <label>Einheit (optional)</label>
+        <select name="unit_id">
+          <option value="">Ohne konkrete Zuordnung</option>
+          ${units.map(u=>`<option value="${u.id}" ${unitId===u.id?"selected":""}>${esc(u.label)}${u.floor?` (${esc(u.floor)})`:""}</option>`).join("")}
+        </select>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>Prüfer</label><input name="inspector_name" value="${esc(S.profile?.full_name||S.user.email)}"></div>
+        <div class="field"><label>Wetter / Bedingungen</label><input name="weather" placeholder="trocken, 12 °C"></div>
+      </div>
+      <div class="field"><label>Anwesende Personen</label><input name="present_persons" placeholder="Mieter, Hausverwaltung, Handwerker …"></div>
+      <div class="row">
+        <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+        <div class="spacer"></div>
+        <button class="btn" type="submit">Begehung starten</button>
+      </div>
+    </form>
+  `);
+}
+function waehleTpl(input){
+  document.querySelectorAll(".tpl").forEach(l => l.classList.remove("on"));
+  input.closest(".tpl").classList.add("on");
+}
+
+async function createInspection(ev, propId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const tplId = fd.get("template_id");
+  const tpl = S.templates.find(t => t.id === tplId);
+  const punkte = tplPunkte(tplId);
+  if(!punkte.length){ toast("Dieser Katalog enthält keine Prüfpunkte.", 4000); return false; }
+
+  const rec = {
+    property_id: propId,
+    unit_id: fd.get("unit_id") || null,
+    title: fd.get("title") || "Begehung",
+    inspection_date: fd.get("inspection_date"),
+    inspector_id: S.user.id,
+    inspector_name: fd.get("inspector_name") || null,
+    weather: fd.get("weather") || null,
+    present_persons: fd.get("present_persons") || null,
+    template_id: tplId || null,
+    template_name: tpl ? tpl.name : null,
+    status: "offen"
+  };
+  const {data:insp, error} = await sb.from("inspections").insert(rec).select().single();
+  if(error){ toast("Fehler: "+error.message,4000); return false; }
+
+  const items = punkte.map(c => {
+    const cat = S.categories.find(k => k.id === c.category_id) || {key:"sonstiges", name:"Sonstiges", sort_order:999};
+    return {
+      inspection_id: insp.id, criterion_id: c.id,
+      category_key: cat.key, category_name: cat.name,
+      criterion_name: c.name, hint: c.hint,
+      sort_order: cat.sort_order*1000 + c.sort_order,
+      critical: c.critical, presence: "offen"
+    };
+  }).sort((a,b)=>a.sort_order-b.sort_order);
+  for(let i=0;i<items.length;i+=200){
+    const {error:e2} = await sb.from("inspection_items").insert(items.slice(i,i+200));
+    if(e2){ toast("Fehler beim Anlegen: "+e2.message,4000); return false; }
+  }
+  closeModal(); toast("Begehung gestartet ✓");
+  go("inspection",{id:insp.id});
+  return false;
+}
+
+/* =========================================================
+   BEGEHUNG DURCHFÜHREN
+   ========================================================= */
+const IS = { insp:null, prop:null, items:[], photoUrls:{}, filter:"alle", skipped:{} };
+
+/* Punkte, die tatsächlich in die Wertung eingehen */
+function aktiveItems(items){
+  return (items||[]).filter(i => !i.hidden && !(IS.skipped && IS.skipped[i.category_key] !== undefined));
+}
+function istUebersprungen(key){ return IS.skipped && IS.skipped[key] !== undefined; }
+
+async function loadInspection(id){
+  const insp = (await sb.from("inspections").select("*").eq("id",id).maybeSingle()).data;
+  if(!insp) return null;
+  const prop = (await sb.from("properties").select("*").eq("id",insp.property_id).maybeSingle()).data;
+  const items = (await sb.from("inspection_items").select("*").eq("inspection_id",id).order("sort_order")).data || [];
+  IS.insp = insp; IS.prop = prop; IS.items = items;
+  IS.skipped = (insp.skipped_categories && typeof insp.skipped_categories === "object") ? insp.skipped_categories : {};
+  const paths = items.filter(i=>i.photo_path).map(i=>i.photo_path);
+  IS.photoUrls = {};
+  if(paths.length){
+    const {data} = await sb.storage.from("check-fotos").createSignedUrls(paths, 3600);
+    (data||[]).forEach(d => { if(d.signedUrl) IS.photoUrls[d.path] = d.signedUrl; });
+  }
+  return insp;
+}
+
+function itemStats(items){
+  const rated = items.filter(i=>i.rating!=null);
+  const answered = items.filter(i=>i.presence && i.presence!=="offen");
+  const relevant = items.filter(i=>i.presence!=="nicht_relevant");
+  const score = rated.length ? rated.reduce((a,b)=>a+b.rating,0)/rated.length : null;
+  const missing = items.filter(i=>i.presence==="nicht_vorhanden");
+  const defects = items.filter(i=>i.defect);
+  const critical = items.filter(i=>(i.critical && i.presence==="nicht_vorhanden") || i.priority==="kritisch");
+  return {rated, answered, relevant, score, missing, defects, critical,
+    progress: items.length ? Math.round(answered.length/items.length*100) : 0};
+}
+
+async function viewInspection(){
+  loading(true);
+  const insp = await loadInspection(S.params.id);
+  if(!insp){ $("#view").innerHTML = '<div class="empty">Begehung nicht gefunden.</div>'; return; }
+  if(insp.status === "abgeschlossen"){ return go("inspectionResult",{id:insp.id}); }
+  renderInspection();
+}
+
+function renderInspection(){
+  const offeneKats = new Set([...document.querySelectorAll('.cat.open')].map(c => c.id));
+  const scrollY = window.scrollY;
+  const {insp, prop, items} = IS;
+  const st = itemStats(aktiveItems(items));
+  const cats = [...new Set(items.map(i=>i.category_key))];
+
+  const visible = i => IS.filter==="alle" ? true
+    : IS.filter==="offen" ? (!i.presence || i.presence==="offen")
+    : (i.defect || i.presence==="nicht_vorhanden" || (i.rating!=null && i.rating<=2));
+
+  $("#view").innerHTML = `
+    <button class="btn ghost sm" onclick="go('property',{id:'${prop.id}'})">← ${esc(prop.name)}</button>
+    <div class="card" style="margin-top:6px">
+      <div class="row between">
+        <div>
+          <h1 style="margin-bottom:2px">${esc(insp.title||"Begehung")}</h1>
+          <div class="small muted">${esc(prop.name)} · ${fmtDate(insp.inspection_date)} · Prüfer: ${esc(insp.inspector_name||"–")}</div>
+        </div>
+        <span class="badge warn">In Arbeit</span>
+      </div>
+      <hr>
+      <div class="row between" style="margin-bottom:6px">
+        <span class="small"><strong>${st.answered.length}</strong> von <strong>${items.length}</strong> Punkten bearbeitet</span>
+        <span class="small mono">${st.progress} %</span>
+      </div>
+      <div class="progressbar"><i style="width:${st.progress}%"></i></div>
+      <div class="row" style="margin-top:12px">
+        <span class="badge ${st.score==null?"":st.score>=4?"ok":st.score>=3?"warn":"bad"}">Ø ${st.score!=null?st.score.toFixed(1):"–"} / 5</span>
+        <span class="badge bad">${st.critical.length} kritisch</span>
+        <span class="badge warn">${st.defects.length} Mängel</span>
+        <span class="badge">${st.missing.length} nicht vorhanden</span>
+      </div>
+      <hr>
+      <div class="field" style="margin:0"><label>Allgemeine Notizen zur Begehung</label>
+        <textarea id="gen-notes" onchange="saveInspField('general_notes', this.value)" placeholder="Beobachtungen, Gesprächsinhalte, Besonderheiten …">${esc(insp.general_notes||"")}</textarea>
+      </div>
+    </div>
+
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn ${IS.filter==="alle"?"":"sec"} sm" onclick="setFilter('alle')">Alle (${items.length})</button>
+      <button class="btn ${IS.filter==="offen"?"":"sec"} sm" onclick="setFilter('offen')">Offen (${items.length-st.answered.length})</button>
+      <button class="btn ${IS.filter==="maengel"?"":"sec"} sm" onclick="setFilter('maengel')">Auffälligkeiten (${new Set([...st.defects,...st.missing].map(x=>x.id)).size})</button>
+      <div class="spacer"></div>
+      <button class="btn sec sm" onclick="toggleAll(true)">Alle öffnen</button>
+      <button class="btn sec sm" onclick="toggleAll(false)">Zuklappen</button>
+    </div>
+
+    ${cats.map(ck => {
+      const cItems = items.filter(i=>i.category_key===ck);
+      const cat = S.categories.find(c=>c.key===ck);
+      const uebersprungen = istUebersprungen(ck);
+
+      if(uebersprungen){
+        const grund = IS.skipped[ck];
+        return `<div class="cat skipped" id="cat-${ck}">
+          <div class="cat-head" onclick="this.parentElement.classList.toggle('open')">
+            <span class="ico">${cat?cat.icon:"📋"}</span>
+            <span class="t">${esc(cItems[0].category_name)}</span>
+            <span class="badge warn">Bereich ausgeschlossen</span>
+            <span class="muted">▾</span>
+          </div>
+          <div class="cat-body">
+            <div class="skip-info">
+              Dieser Bereich wurde für diese Begehung ausgeschlossen. Alle ${cItems.length} Fragen entfallen und
+              fließen nicht in die Bewertung ein. Im Protokoll wird der Bereich mit dieser Begründung ausgewiesen.
+              ${grund?`<div style="margin-top:6px"><strong>Begründung:</strong> ${esc(grund)}</div>`:""}
+            </div>
+            <div style="padding:12px"><button class="btn sec sm" onclick="bereichAufnehmen('${ck}')">Bereich wieder aufnehmen</button></div>
+          </div>
+        </div>`;
+      }
+
+      const aktive = cItems.filter(i=>!i.hidden);
+      const versteckte = cItems.filter(i=>i.hidden);
+      const shown = aktive.filter(visible);
+      if(!shown.length && !versteckte.length) return "";
+      const cs = itemStats(aktive);
+      return `<div class="cat" id="cat-${ck}">
+        <div class="cat-head" onclick="this.parentElement.classList.toggle('open')">
+          <span class="ico">${cat?cat.icon:"📋"}</span>
+          <span class="t">${esc(cItems[0].category_name)}</span>
+          <span class="badge ${cs.progress===100?"ok":""}">${cs.answered.length}/${aktive.length}</span>
+          ${cs.critical.length?`<span class="badge bad">${cs.critical.length}</span>`:""}
+          ${versteckte.length?`<span class="badge">${versteckte.length} ausgeblendet</span>`:""}
+          <span class="muted">▾</span>
+        </div>
+        <div class="cat-body">
+          ${shown.map(renderItem).join("")}
+          ${versteckte.length?`<div class="hidden-box">
+            <div class="xs muted" style="font-weight:700;margin-bottom:4px">Ausgeblendet, erscheint im Protokoll als nicht relevant</div>
+            ${versteckte.map(i=>`<div class="hidden-row">
+              <span class="nm">${esc(i.criterion_name)}</span>
+              <button class="btn ghost sm" onclick="einblenden('${i.id}')">einblenden</button>
+            </div>`).join("")}
+          </div>`:""}
+          <div style="padding:12px" class="row">
+            <button class="btn sec sm" onclick="addCustomItem('${ck}')">+ Eigene Frage</button>
+            <div class="spacer"></div>
+            <button class="btn ghost sm" onclick="bereichAusschliessen('${ck}')">Bereich ausschließen</button>
+          </div>
+        </div>
+      </div>`;
+    }).join("")}
+
+    <div class="card">
+      <button class="btn sec full" onclick="addCustomItem()">+ Eigenen Prüfpunkt (freie Kategorie)</button>
+    </div>
+
+    <div class="stickybar"><div class="wrap">
+      <div style="flex:1">
+        <div class="xs muted">Automatisch gespeichert</div>
+        <div class="progressbar" style="margin-top:4px"><i style="width:${st.progress}%"></i></div>
+      </div>
+      <button class="btn" onclick="finishInspection()">Begehung abschließen</button>
+    </div></div>
+  `;
+  if(IS.filter!=="alle"){
+    document.querySelectorAll(".cat").forEach(c=>c.classList.add("open"));
+  } else if(offeneKats.size){
+    offeneKats.forEach(id => { const n = el(id); if(n) n.classList.add("open"); });
+    window.scrollTo(0, scrollY);
+  }
+}
+
+function renderItem(i){
+  const photo = i.photo_path && IS.photoUrls[i.photo_path];
+  return `<div class="crit" id="item-${i.id}">
+    <div class="row between" style="align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div class="crit-name">${esc(i.criterion_name)} ${i.critical?'<span class="badge bad xs">sicherheitsrelevant</span>':""}${i.is_custom?'<span class="badge info xs">eigen</span>':""}</div>
+        ${i.hint?`<div class="crit-hint">${esc(i.hint)}</div>`:""}
+      </div>
+      <div class="item-menu">
+        <button onclick="itemMenue(event,'${i.id}')" title="Optionen">⋯</button>
+      </div>
+    </div>
+    <div class="pres">
+      ${[["vorhanden","✓ Vorhanden / OK"],["nicht_vorhanden","✕ Nicht vorhanden"],["nicht_relevant","– Nicht relevant"]]
+        .map(([v,l])=>`<button data-v="${v}" class="${i.presence===v?"on":""}" onclick="setPresence('${i.id}','${v}')">${l}</button>`).join("")}
+    </div>
+    <div class="emojis">
+      ${SCALE.map(s=>`<button class="${i.rating===s.v?"on":""}" onclick="setRating('${i.id}',${s.v})" title="${s.l}">${s.e}<span class="lbl">${s.l}</span></button>`).join("")}
+    </div>
+    <textarea placeholder="Notiz, Ort, Maßnahme …" onchange="saveItem('${i.id}',{note:this.value})">${esc(i.note||"")}</textarea>
+    <div class="crit-extra">
+      <button class="chip-toggle ${i.defect?"on":""}" onclick="toggleDefect('${i.id}')">🔧 Mangel</button>
+      <select style="width:auto;padding:7px 10px;font-size:.8rem" onchange="saveItem('${i.id}',{priority:this.value})">
+        ${PRIOS.map(([v,l])=>`<option value="${v}" ${i.priority===v?"selected":""}>Priorität: ${l}</option>`).join("")}
+      </select>
+      <input type="date" style="width:auto;padding:7px 10px;font-size:.8rem" value="${i.due_date||""}" onchange="saveItem('${i.id}',{due_date:this.value||null})" title="Frist">
+      <label class="chip-toggle" style="cursor:pointer;margin:0">
+        📷 Foto<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadPhoto('${i.id}', this)">
+      </label>
+      ${photo?`<img src="${photo}" class="thumb" onclick="window.open('${photo}','_blank')">`:""}
+      ${i.photo_path?`<button class="btn ghost sm" onclick="removePhoto('${i.id}')">Foto löschen</button>`:""}
+    </div>
+  </div>`;
+}
+
+function setFilter(f){ IS.filter=f; renderInspection(); }
+function toggleAll(open){ document.querySelectorAll(".cat").forEach(c=>c.classList.toggle("open", open)); }
+
+/* ---------- Fragen bearbeiten, ausblenden, Bereiche ausschließen ---------- */
+function itemMenue(ev, id){
+  ev.stopPropagation();
+  document.querySelectorAll(".menu-pop").forEach(m=>m.remove());
+  const it = IS.items.find(x=>x.id===id);
+  const box = ev.currentTarget.parentElement;
+  const pop = document.createElement("div");
+  pop.className = "menu-pop";
+  pop.innerHTML = `
+    <button onclick="frageBearbeiten('${id}')">✎ Frage bearbeiten</button>
+    <button onclick="ausblenden('${id}')">👁 Frage ausblenden</button>
+    ${it.is_custom?`<button class="warn" onclick="removeItem('${id}')">✕ Ganz entfernen</button>`:""}`;
+  box.appendChild(pop);
+  setTimeout(()=>document.addEventListener("click", schliesseMenues, {once:true}), 0);
+}
+function schliesseMenues(){ document.querySelectorAll(".menu-pop").forEach(m=>m.remove()); }
+
+function frageBearbeiten(id){
+  schliesseMenues();
+  const it = IS.items.find(x=>x.id===id);
+  openModal(`
+    <h2>Frage bearbeiten</h2>
+    <p class="small muted" style="margin:-8px 0 14px">
+      Gilt nur für diese Begehung und erscheint so im Protokoll. Der allgemeine Prüfkatalog bleibt unverändert.
+    </p>
+    <form onsubmit="return frageSpeichern(event,'${id}')">
+      <div class="field"><label>Frage *</label><textarea name="criterion_name" required style="min-height:64px">${esc(it.criterion_name)}</textarea></div>
+      <div class="field"><label>Hinweis für den Prüfer</label><input name="hint" value="${esc(it.hint||"")}"></div>
+      <label class="row xs" style="gap:7px;margin-bottom:14px"><input type="checkbox" name="critical" style="width:auto" ${it.critical?"checked":""}> Sicherheitsrelevanter Punkt</label>
+      <div class="row">
+        <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+        <div class="spacer"></div>
+        <button class="btn" type="submit">Speichern</button>
+      </div>
+    </form>`);
+}
+async function frageSpeichern(ev, id){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  await saveItem(id, {
+    criterion_name: fd.get("criterion_name"),
+    hint: fd.get("hint") || null,
+    critical: !!fd.get("critical")
+  });
+  closeModal(); refreshItem(id);
+  toast("Frage angepasst ✓");
+  return false;
+}
+
+async function ausblenden(id){
+  schliesseMenues();
+  const it = IS.items.find(x=>x.id===id);
+  const grund = prompt("Warum ist diese Frage hier nicht relevant? (optional, erscheint im Protokoll)", "");
+  if(grund === null) return;
+  await saveItem(id, {hidden:true, hidden_reason: grund || null, presence:"nicht_relevant", rating:null});
+  renderInspection();
+  toast("Frage ausgeblendet");
+}
+async function einblenden(id){
+  await saveItem(id, {hidden:false, hidden_reason:null, presence:"offen"});
+  renderInspection();
+}
+
+async function bereichAusschliessen(key){
+  const cat = S.categories.find(c=>c.key===key);
+  const anzahl = IS.items.filter(i=>i.category_key===key).length;
+  const grund = prompt(`Bereich "${cat?cat.name:key}" mit ${anzahl} Fragen komplett ausschließen.\n\nBegründung (erscheint im Protokoll):`, "Für dieses Objekt nicht zutreffend");
+  if(grund === null) return;
+  IS.skipped[key] = grund || "";
+  await sb.from("inspections").update({skipped_categories: IS.skipped}).eq("id", IS.insp.id);
+  IS.insp.skipped_categories = IS.skipped;
+  renderInspection();
+  toast("Bereich ausgeschlossen");
+}
+async function bereichAufnehmen(key){
+  delete IS.skipped[key];
+  await sb.from("inspections").update({skipped_categories: IS.skipped}).eq("id", IS.insp.id);
+  IS.insp.skipped_categories = IS.skipped;
+  renderInspection();
+  toast("Bereich wieder aufgenommen");
+}
+
+async function saveItem(id, patch, silent=true){
+  const idx = IS.items.findIndex(x=>x.id===id);
+  if(idx>=0) Object.assign(IS.items[idx], patch);
+  const {error} = await sb.from("inspection_items").update(patch).eq("id",id);
+  if(error) toast("Speichern fehlgeschlagen: "+error.message, 4000);
+}
+async function saveInspField(field, value){
+  IS.insp[field] = value;
+  await sb.from("inspections").update({[field]:value}).eq("id",IS.insp.id);
+}
+async function setPresence(id, v){
+  const it = IS.items.find(x=>x.id===id);
+  const nv = it.presence===v ? "offen" : v;
+  const patch = {presence:nv};
+  if(nv==="nicht_relevant") patch.rating = null;
+  if(nv==="nicht_vorhanden" && it.rating==null) patch.rating = 1;
+  await saveItem(id, patch);
+  refreshItem(id);
+}
+async function setRating(id, v){
+  const it = IS.items.find(x=>x.id===id);
+  const nv = it.rating===v ? null : v;
+  const patch = {rating:nv};
+  if(nv!=null && (!it.presence || it.presence==="offen")) patch.presence = "vorhanden";
+  await saveItem(id, patch);
+  refreshItem(id);
+}
+async function toggleDefect(id){
+  const it = IS.items.find(x=>x.id===id);
+  const patch = {defect: !it.defect};
+  if(patch.defect && it.priority==="keine") patch.priority = "mittel";
+  await saveItem(id, patch);
+  refreshItem(id);
+}
+function refreshItem(id){
+  const it = IS.items.find(x=>x.id===id);
+  const node = el("item-"+id);
+  if(node){ node.outerHTML = renderItem(it); }
+  updateHeaderStats();
+}
+function updateHeaderStats(){
+  const st = itemStats(aktiveItems(IS.items));
+  document.querySelectorAll(".progressbar > i").forEach(b=>b.style.width = st.progress+"%");
+}
+
+async function uploadPhoto(itemId, input){
+  const file = input.files[0]; if(!file) return;
+  toast("Foto wird hochgeladen …");
+  try{
+    const blob = await resizeImage(file, 1400, .75);
+    const path = `${IS.insp.id}/${itemId}-${Date.now()}.jpg`;
+    const {error} = await sb.storage.from("check-fotos").upload(path, blob, {contentType:"image/jpeg", upsert:true});
+    if(error) throw error;
+    await saveItem(itemId, {photo_path: path});
+    const {data} = await sb.storage.from("check-fotos").createSignedUrl(path, 3600);
+    IS.photoUrls[path] = data.signedUrl;
+    refreshItem(itemId);
+    toast("Foto gespeichert ✓");
+  }catch(err){ toast("Foto-Fehler: "+(err.message||err), 4000); }
+}
+async function removePhoto(itemId){
+  const it = IS.items.find(x=>x.id===itemId);
+  if(it.photo_path) await sb.storage.from("check-fotos").remove([it.photo_path]);
+  await saveItem(itemId, {photo_path:null});
+  refreshItem(itemId);
+}
+function resizeImage(file, maxSize, quality){
+  return new Promise((res, rej)=>{
+    const img = new Image();
+    img.onload = () => {
+      let {width:w, height:h} = img;
+      const scale = Math.min(1, maxSize/Math.max(w,h));
+      w = Math.round(w*scale); h = Math.round(h*scale);
+      const c = document.createElement("canvas"); c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      c.toBlob(b => b ? res(b) : rej(new Error("Bild konnte nicht verarbeitet werden")), "image/jpeg", quality);
+    };
+    img.onerror = () => rej(new Error("Bild konnte nicht gelesen werden"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function addCustomItem(catKey){
+  const cats = S.categories;
+  openModal(`
+    <h2>Eigener Prüfpunkt</h2>
+    <form onsubmit="return saveCustomItem(event)">
+      <div class="field"><label>Kategorie</label>
+        <select name="category_key">
+          ${cats.map(c=>`<option value="${c.key}" ${catKey===c.key?"selected":""}>${c.icon} ${esc(c.name)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field"><label>Bezeichnung des Prüfpunkts *</label><input name="criterion_name" required placeholder="z. B. Gartentor schließt selbsttätig"></div>
+      <div class="field"><label>Hinweis (optional)</label><input name="hint" placeholder="Worauf ist zu achten?"></div>
+      <label class="row xs" style="gap:7px;margin-bottom:12px"><input type="checkbox" name="critical" style="width:auto"> Sicherheitsrelevanter Punkt</label>
+      <label class="row xs" style="gap:7px;margin-bottom:14px"><input type="checkbox" name="permanent" style="width:auto" checked> Dauerhaft in den Prüfkatalog übernehmen (für künftige Begehungen)</label>
+      <div class="row">
+        <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+        <div class="spacer"></div>
+        <button class="btn" type="submit">Hinzufügen</button>
+      </div>
+    </form>`);
+}
+async function saveCustomItem(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const ck = fd.get("category_key");
+  const cat = S.categories.find(c=>c.key===ck);
+  const name = fd.get("criterion_name");
+  const hint = fd.get("hint")||null;
+  const critical = !!fd.get("critical");
+  let criterionId = null;
+
+  if(fd.get("permanent")){
+    const maxOrd = Math.max(0, ...S.criteria.filter(c=>c.category_id===cat.id).map(c=>c.sort_order));
+    const {data, error} = await sb.from("criteria").insert({
+      category_id:cat.id, name, hint, critical, sort_order:maxOrd+10,
+      is_system:false, created_by:S.user.id, scope:"beide"
+    }).select().single();
+    if(error){ toast("Fehler: "+error.message,4000); return false; }
+    criterionId = data.id; S.criteria.push(data);
+  }
+  const maxSort = Math.max(0, ...IS.items.filter(i=>i.category_key===ck).map(i=>i.sort_order));
+  const {data:item, error:e2} = await sb.from("inspection_items").insert({
+    inspection_id: IS.insp.id, criterion_id: criterionId,
+    category_key: ck, category_name: cat.name, criterion_name: name, hint,
+    sort_order: maxSort+1, critical, is_custom:true, presence:"offen"
+  }).select().single();
+  if(e2){ toast("Fehler: "+e2.message,4000); return false; }
+  IS.items.push(item);
+  IS.items.sort((a,b)=>a.sort_order-b.sort_order);
+  closeModal(); renderInspection();
+  const node = el("item-"+item.id);
+  if(node){ node.closest(".cat").classList.add("open"); node.scrollIntoView({behavior:"smooth",block:"center"}); }
+  toast("Prüfpunkt hinzugefügt ✓");
+  return false;
+}
+async function removeItem(id){
+  if(!confirm("Diesen Prüfpunkt aus der Begehung entfernen?")) return;
+  await sb.from("inspection_items").delete().eq("id",id);
+  IS.items = IS.items.filter(i=>i.id!==id);
+  renderInspection();
+}
+
+async function finishInspection(){
+  const aktive = aktiveItems(IS.items);
+  const st = itemStats(aktive);
+  const offen = aktive.length - st.answered.length;
+  if(offen > 0 && !confirm(`Es sind noch ${offen} Prüfpunkte unbearbeitet. Trotzdem abschließen?`)) return;
+  const patch = {
+    status:"abgeschlossen",
+    completed_at: new Date().toISOString(),
+    score: st.score!=null ? Number(st.score.toFixed(2)) : null,
+    score_percent: st.score!=null ? Number((st.score/5*100).toFixed(1)) : null,
+    rated_count: st.rated.length,
+    missing_count: st.missing.length,
+    defect_count: st.defects.length,
+    critical_count: st.critical.length,
+    hidden_count: IS.items.filter(i=>i.hidden).length,
+    skipped_categories: IS.skipped,
+    general_notes: el("gen-notes") ? el("gen-notes").value : IS.insp.general_notes
+  };
+  const {error} = await sb.from("inspections").update(patch).eq("id", IS.insp.id);
+  if(error){ toast("Fehler: "+error.message,4000); return; }
+  toast("Begehung abgeschlossen ✓");
+  go("inspectionResult",{id:IS.insp.id});
+}
+
+/* =========================================================
+   ERGEBNIS EINER BEGEHUNG
+   ========================================================= */
+async function viewInspectionResult(){
+  loading(true);
+  const insp = await loadInspection(S.params.id);
+  if(!insp){ $("#view").innerHTML = '<div class="empty">Begehung nicht gefunden.</div>'; return; }
+  const {prop, items} = IS;
+  const st = itemStats(aktiveItems(items));
+  const cats = [...new Set(items.map(i=>i.category_key))];
+  const maengel = aktiveItems(items).filter(i=>i.defect || i.presence==="nicht_vorhanden" || (i.rating!=null && i.rating<=2))
+    .sort((a,b)=> (["kritisch","hoch","mittel","niedrig","keine"].indexOf(a.priority)) - (["kritisch","hoch","mittel","niedrig","keine"].indexOf(b.priority)));
+
+  $("#view").innerHTML = `
+    <button class="btn ghost sm" onclick="go('property',{id:'${prop.id}'})">← ${esc(prop.name)}</button>
+    <div class="card" style="margin-top:6px">
+      <div class="row between">
+        <div>
+          <h1 style="margin-bottom:2px">${esc(insp.title||"Begehung")}</h1>
+          <div class="small muted">${esc(prop.name)} · ${fmtDate(insp.inspection_date)} · Prüfer: ${esc(insp.inspector_name||"–")}</div>
+        </div>
+        <div class="row">
+          <button class="btn sec sm" onclick="reopenInspection('${insp.id}')">Bearbeiten</button>
+          <button class="btn" onclick="makePdf('${insp.id}')">📄 PDF herunterladen</button>
+        </div>
+      </div>
+      <hr>
+      <div class="grid g4">
+        <div class="stat" style="box-shadow:none;border-color:transparent;padding:0">
+          <div class="l">Gesamtbewertung</div>
+          <div class="n" style="color:${scoreColor(st.score)}">${st.score!=null?st.score.toFixed(1):"–"}<span style="font-size:1rem;color:var(--muted)"> / 5</span></div>
+          <div class="small">${st.score!=null?(scaleOf(Math.round(st.score))?.e+" "+scaleOf(Math.round(st.score))?.l):""}</div>
+        </div>
+        <div class="stat" style="box-shadow:none;border-color:transparent;padding:0"><div class="l">Geprüfte Punkte</div><div class="n">${st.answered.length}<span style="font-size:1rem;color:var(--muted)"> / ${aktiveItems(items).length}</span></div>${items.filter(i=>i.hidden).length?`<div class="xs muted">${items.filter(i=>i.hidden).length} ausgeblendet</div>`:""}</div>
+        <div class="stat" style="box-shadow:none;border-color:transparent;padding:0"><div class="l">Mängel</div><div class="n" style="color:${st.defects.length?"#f59e0b":"inherit"}">${st.defects.length}</div></div>
+        <div class="stat" style="box-shadow:none;border-color:transparent;padding:0"><div class="l">Kritisch</div><div class="n" style="color:${st.critical.length?"#dc2626":"inherit"}">${st.critical.length}</div></div>
+      </div>
+      ${insp.general_notes?`<hr><div class="xs muted">Allgemeine Notizen</div><div class="small">${esc(insp.general_notes).replace(/\n/g,"<br>")}</div>`:""}
+    </div>
+
+    ${maengel.length?`<div class="card">
+      <h3>Maßnahmen und Auffälligkeiten (${maengel.length})</h3>
+      <table class="t"><thead><tr><th>Prüfpunkt</th><th>Kategorie</th><th>Status</th><th>Bewertung</th><th>Priorität</th><th>Frist</th></tr></thead><tbody>
+      ${maengel.map(i=>`<tr>
+        <td><strong>${esc(i.criterion_name)}</strong>${i.note?`<div class="xs muted">${esc(i.note)}</div>`:""}</td>
+        <td class="xs">${esc(i.category_name)}</td>
+        <td>${presBadge(i.presence)}</td>
+        <td>${i.rating!=null?`${scaleOf(i.rating).e} ${i.rating}/5`:"–"}</td>
+        <td>${prioBadge(i.priority)}</td>
+        <td class="xs mono">${i.due_date?fmtDate(i.due_date):"–"}</td>
+      </tr>`).join("")}
+      </tbody></table>
+    </div>`:`<div class="card"><div class="row"><span class="badge ok">Keine Mängel erfasst</span></div></div>`}
+
+    ${Object.keys(IS.skipped||{}).length?`<div class="card" style="border-color:#fcd34d;background:#fffdf5">
+      <h3>Ausgeschlossene Bereiche (${Object.keys(IS.skipped).length})</h3>
+      ${Object.entries(IS.skipped).map(([k,grund])=>{
+        const c = S.categories.find(x=>x.key===k);
+        const n = items.filter(i=>i.category_key===k).length;
+        return `<div style="padding:7px 0;border-top:1px solid #fde68a">
+          <strong>${c?c.icon+" "+esc(c.name):esc(k)}</strong> <span class="xs muted">${n} Fragen entfallen</span>
+          ${grund?`<div class="small">${esc(grund)}</div>`:""}
+        </div>`;
+      }).join("")}
+    </div>`:""}
+
+    ${cats.map(ck=>{
+      const cItems = items.filter(i=>i.category_key===ck);
+      const cat = S.categories.find(c=>c.key===ck);
+      if(istUebersprungen(ck)) return "";
+      const sichtbare = cItems.filter(i=>!i.hidden);
+      const versteckte = cItems.filter(i=>i.hidden);
+      const cs = itemStats(sichtbare);
+      return `<div class="cat">
+        <div class="cat-head" onclick="this.parentElement.classList.toggle('open')">
+          <span class="ico">${cat?cat.icon:"📋"}</span>
+          <span class="t">${esc(cItems[0].category_name)}</span>
+          ${cs.score!=null?`<span class="badge ${cs.score>=4?"ok":cs.score>=3?"warn":"bad"}">Ø ${cs.score.toFixed(1)}</span>`:'<span class="badge">–</span>'}
+          ${versteckte.length?`<span class="badge">${versteckte.length} ausgeblendet</span>`:""}
+          <span class="muted">▾</span>
+        </div>
+        <div class="cat-body">
+          ${versteckte.length?`<div class="hidden-box">
+            <div class="xs muted" style="font-weight:700;margin-bottom:4px">Als nicht relevant ausgeblendet</div>
+            ${versteckte.map(i=>`<div class="hidden-row"><span class="nm">${esc(i.criterion_name)}</span>${i.hidden_reason?`<span class="xs">${esc(i.hidden_reason)}</span>`:""}</div>`).join("")}
+          </div>`:""}
+          <table class="t" style="margin:0">
+            <tbody>
+            ${sichtbare.map(i=>`<tr>
+              <td style="width:45%"><strong>${esc(i.criterion_name)}</strong>${i.note?`<div class="xs muted">${esc(i.note)}</div>`:""}</td>
+              <td>${presBadge(i.presence)}</td>
+              <td style="white-space:nowrap">${i.rating!=null?`${scaleOf(i.rating).e} <span class="mono">${i.rating}/5</span>`:'<span class="xs muted">nicht bewertet</span>'}</td>
+              <td>${i.defect?prioBadge(i.priority):""}</td>
+              <td>${i.photo_path&&IS.photoUrls[i.photo_path]?`<img src="${IS.photoUrls[i.photo_path]}" class="thumb" style="width:38px;height:38px" onclick="window.open('${IS.photoUrls[i.photo_path]}','_blank')">`:""}</td>
+            </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join("")}
+  `;
+}
+function presBadge(p){
+  if(p==="vorhanden") return '<span class="badge ok">Vorhanden</span>';
+  if(p==="nicht_vorhanden") return '<span class="badge bad">Nicht vorhanden</span>';
+  if(p==="nicht_relevant") return '<span class="badge">Nicht relevant</span>';
+  return '<span class="badge warn">Offen</span>';
+}
+function prioBadge(p){
+  if(!p||p==="keine") return "";
+  const m = {niedrig:"", mittel:"warn", hoch:"warn", kritisch:"bad"};
+  return `<span class="badge ${m[p]||""}">${p.charAt(0).toUpperCase()+p.slice(1)}</span>`;
+}
+async function reopenInspection(id){
+  await sb.from("inspections").update({status:"offen"}).eq("id",id);
+  go("inspection",{id});
+}
+
+/* =========================================================
+   PDF-EXPORT
+   ========================================================= */
+const PRES_TXT = {vorhanden:"Vorhanden / OK", nicht_vorhanden:"NICHT vorhanden", nicht_relevant:"Nicht relevant", offen:"Offen"};
+const RATE_TXT = {1:"Sehr schlecht",2:"Schlecht",3:"Mittel",4:"Gut",5:"Sehr gut"};
+
+async function makePdf(id){
+  toast("PDF wird erstellt …");
+  try{
+    if(!IS.insp || IS.insp.id !== id) await loadInspection(id);
+    const {insp, prop, items} = IS;
+    const st = itemStats(aktiveItems(items));
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4"});
+    const W = doc.internal.pageSize.getWidth();
+    const M = 14;
+
+    /* Kopfbereich */
+    doc.setFillColor(29,78,216); doc.rect(0,0,W,32,"F");
+    doc.setFillColor(220,38,38); doc.rect(0,32,W,1.6,"F");
+    doc.setTextColor(255); doc.setFont("helvetica","bold"); doc.setFontSize(17);
+    doc.text("Prüfprotokoll Immobilie", M, 14);
+    doc.setFont("helvetica","normal"); doc.setFontSize(10);
+    doc.text(`${insp.title||"Begehung"} · ${fmtDate(insp.inspection_date)}`, M, 21);
+    doc.setFontSize(8.5);
+    doc.text("Sicherheits- und Qualitätskontrolle", M, 27);
+    doc.setTextColor(30,41,59);
+
+    /* Objektdaten */
+    const adr = [[prop.street, prop.house_number].filter(Boolean).join(" "), [prop.zip, prop.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    doc.autoTable({
+      startY: 38,
+      theme: "plain",
+      styles: {fontSize:9, cellPadding:1.4, textColor:[30,41,59]},
+      columnStyles: {0:{fontStyle:"bold", cellWidth:34}, 2:{fontStyle:"bold", cellWidth:34}},
+      body: [
+        ["Objekt", prop.name || "-", "Objektart", objLabel(prop.object_type)],
+        ["Adresse", adr || "-", "Baujahr", prop.build_year ? String(prop.build_year) : "-"],
+        ["Einheiten", String(prop.units_count||1), "Wohnfläche", prop.living_area ? prop.living_area+" m2" : "-"],
+        ["Prüfer", insp.inspector_name || "-", "Datum", fmtDate(insp.inspection_date)],
+        ["Anwesend", insp.present_persons || "-", "Wetter", insp.weather || "-"],
+        ["Fragenkatalog", insp.template_name || "-", "Eigentümer", prop.owner_name || "-"]
+      ]
+    });
+
+    /* Ergebnisbox */
+    let y = doc.lastAutoTable.finalY + 6;
+    const col = st.score==null ? [148,163,184] : st.score>=4 ? [22,163,74] : st.score>=3 ? [234,179,8] : [220,38,38];
+    doc.setFillColor(...col); doc.roundedRect(M, y, W-2*M, 22, 3, 3, "F");
+    doc.setTextColor(255); doc.setFont("helvetica","bold"); doc.setFontSize(22);
+    doc.text(st.score!=null ? st.score.toFixed(1)+" / 5" : "-", M+6, y+14);
+    doc.setFontSize(11);
+    doc.text(st.score!=null ? RATE_TXT[Math.round(st.score)] : "Keine Bewertung", M+42, y+9);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    doc.text(`${st.answered.length} von ${aktiveItems(items).length} Prüfpunkten bearbeitet`
+      + (items.filter(i=>i.hidden).length ? `, ${items.filter(i=>i.hidden).length} ausgeblendet` : ""), M+42, y+15.5);
+    doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    doc.text(`Mängel: ${st.defects.length}`, W-M-46, y+9);
+    doc.text(`Kritisch: ${st.critical.length}`, W-M-46, y+15.5);
+    doc.setTextColor(30,41,59);
+    y += 28;
+
+    if(insp.general_notes){
+      doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.text("Allgemeine Notizen", M, y); y+=5;
+      doc.setFont("helvetica","normal"); doc.setFontSize(9);
+      const lines = doc.splitTextToSize(insp.general_notes, W-2*M);
+      doc.text(lines, M, y); y += lines.length*4.4 + 4;
+    }
+
+    /* Ausgeschlossene Bereiche */
+    const ausgeschlossen = Object.entries(IS.skipped || {});
+    if(ausgeschlossen.length){
+      if(y > 235){ doc.addPage(); y = 18; }
+      doc.setFont("helvetica","bold"); doc.setFontSize(11);
+      doc.text(`Ausgeschlossene Bereiche (${ausgeschlossen.length})`, M, y);
+      doc.autoTable({
+        startY: y+3,
+        head: [["Bereich","Entfallene Fragen","Begründung"]],
+        body: ausgeschlossen.map(([k,grund]) => {
+          const c = S.categories.find(x=>x.key===k);
+          return [ c ? c.name : k, String(items.filter(i=>i.category_key===k).length), grund || "ohne Angabe" ];
+        }),
+        styles:{fontSize:8, cellPadding:1.8, overflow:"linebreak"},
+        headStyles:{fillColor:[245,158,11], fontSize:8},
+        columnStyles:{0:{cellWidth:60},1:{cellWidth:32,halign:"center"},2:{cellWidth:"auto"}}
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    /* Mängelübersicht */
+    const maengel = aktiveItems(items).filter(i=>i.defect || i.presence==="nicht_vorhanden" || (i.rating!=null && i.rating<=2));
+    if(maengel.length){
+      doc.setFont("helvetica","bold"); doc.setFontSize(11);
+      doc.text(`Maßnahmen und Auffälligkeiten (${maengel.length})`, M, y);
+      doc.autoTable({
+        startY: y+3,
+        head: [["Prüfpunkt","Kategorie","Status","Bew.","Priorität","Frist"]],
+        body: maengel.map(i=>[
+          i.criterion_name + (i.note ? "\n" + i.note : ""),
+          i.category_name,
+          PRES_TXT[i.presence||"offen"],
+          i.rating!=null ? i.rating+"/5" : "-",
+          i.priority==="keine" ? "-" : i.priority.charAt(0).toUpperCase()+i.priority.slice(1),
+          i.due_date ? fmtDate(i.due_date) : "-"
+        ]),
+        styles:{fontSize:8, cellPadding:1.8, overflow:"linebreak"},
+        headStyles:{fillColor:[29,78,216], fontSize:8},
+        columnStyles:{0:{cellWidth:62},1:{cellWidth:32},2:{cellWidth:26},3:{cellWidth:12,halign:"center"},4:{cellWidth:20},5:{cellWidth:20}},
+        didParseCell: d => {
+          if(d.section==="body" && d.column.index===4 && /Kritisch|Hoch/i.test(d.cell.raw)){
+            d.cell.styles.textColor = [185,28,28]; d.cell.styles.fontStyle = "bold";
+          }
+          if(d.section==="body" && d.column.index===2 && /NICHT/.test(d.cell.raw)){
+            d.cell.styles.textColor = [185,28,28]; d.cell.styles.fontStyle = "bold";
+          }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    /* Detailteil je Kategorie */
+    const cats = [...new Set(items.map(i=>i.category_key))].filter(ck => !istUebersprungen(ck));
+    for(const ck of cats){
+      const alle = items.filter(i=>i.category_key===ck);
+      const cItems = alle.filter(i=>!i.hidden);
+      const versteckt = alle.filter(i=>i.hidden);
+      const cs = itemStats(cItems);
+      if(y > 250){ doc.addPage(); y = 18; }
+      doc.setFont("helvetica","bold"); doc.setFontSize(11);
+      doc.text(`${alle[0].category_name}`, M, y);
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(100,116,139);
+      doc.text(cs.score!=null ? `Durchschnitt ${cs.score.toFixed(1)} / 5` : "keine Bewertung", W-M, y, {align:"right"});
+      doc.setTextColor(30,41,59);
+      doc.autoTable({
+        startY: y+3,
+        head: [["Prüfpunkt","Status","Bewertung","Notiz"]],
+        body: cItems.map(i=>[
+          i.criterion_name + (i.critical ? "  [sicherheitsrelevant]" : ""),
+          PRES_TXT[i.presence||"offen"],
+          i.rating!=null ? `${i.rating}/5 ${RATE_TXT[i.rating]}` : "-",
+          i.note || ""
+        ]).concat(versteckt.map(i=>[
+          i.criterion_name,
+          "Ausgeblendet",
+          "-",
+          i.hidden_reason ? "Nicht relevant: " + i.hidden_reason : "Für dieses Objekt nicht relevant"
+        ])),
+        styles:{fontSize:8, cellPadding:1.7, overflow:"linebreak"},
+        headStyles:{fillColor:[226,232,240], textColor:[51,65,85], fontSize:8},
+        alternateRowStyles:{fillColor:[248,250,252]},
+        columnStyles:{0:{cellWidth:70},1:{cellWidth:26},2:{cellWidth:32},3:{cellWidth:"auto"}},
+        didParseCell: d => {
+          if(d.section!=="body") return;
+          const it = cItems.concat(versteckt)[d.row.index];
+          if(!it) return;
+          if(it.hidden){ d.cell.styles.textColor = [148,163,184]; d.cell.styles.fontStyle = "italic"; return; }
+          if(d.column.index===1 && it.presence==="nicht_vorhanden"){ d.cell.styles.textColor=[185,28,28]; d.cell.styles.fontStyle="bold"; }
+          if(d.column.index===2 && it.rating!=null){
+            const c = it.rating>=4?[21,128,61]: it.rating===3?[161,98,7]:[185,28,28];
+            d.cell.styles.textColor = c;
+          }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 7;
+    }
+
+    /* Fotoanhang */
+    const withPhoto = items.filter(i=>i.photo_path && IS.photoUrls[i.photo_path]);
+    if(withPhoto.length){
+      doc.addPage(); y = 18;
+      doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.text("Fotodokumentation", M, y); y += 8;
+      let x = M; const w = (W-2*M-6)/2; const h = w*0.72;
+      for(const i of withPhoto){
+        try{
+          const dataUrl = await urlToDataUrl(IS.photoUrls[i.photo_path]);
+          if(y + h + 12 > 280){ doc.addPage(); y = 18; x = M; }
+          doc.addImage(dataUrl, "JPEG", x, y, w, h);
+          doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(71,85,105);
+          const cap = doc.splitTextToSize(`${i.category_name}: ${i.criterion_name}`, w);
+          doc.text(cap.slice(0,2), x, y+h+3.5);
+          doc.setTextColor(30,41,59);
+          if(x === M){ x = M + w + 6; } else { x = M; y += h + 12; }
+        }catch(e){ console.warn("Foto konnte nicht eingebettet werden", e); }
+      }
+    }
+
+    /* Fußzeile */
+    const pages = doc.internal.getNumberOfPages();
+    for(let p=1;p<=pages;p++){
+      doc.setPage(p);
+      doc.setFontSize(7.5); doc.setTextColor(148,163,184);
+      doc.text(`${prop.name} · Prüfprotokoll vom ${fmtDate(insp.inspection_date)} · erstellt am ${fmtDateTime(new Date())}`, M, 290);
+      doc.text(`Seite ${p} von ${pages}`, W-M, 290, {align:"right"});
+    }
+
+    const safe = s => String(s||"objekt").replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g,"_").slice(0,40);
+    doc.save(`Pruefprotokoll_${safe(prop.name)}_${insp.inspection_date}.pdf`);
+    toast("PDF erstellt ✓");
+  }catch(err){
+    console.error(err);
+    toast("PDF-Fehler: "+(err.message||err), 5000);
+  }
+}
+function urlToDataUrl(url){
+  return fetch(url).then(r=>r.blob()).then(b => new Promise((res,rej)=>{
+    const fr = new FileReader(); fr.onload = ()=>res(fr.result); fr.onerror = rej; fr.readAsDataURL(b);
+  }));
+}
+
+/* =========================================================
+   VORLAGEN (FRAGENKATALOGE)
+   ========================================================= */
+async function viewTemplates(){
+  loading(true);
+  await loadCatalog();
+  const eigene = S.templates.filter(t=>!t.is_system);
+  const system = S.templates.filter(t=>t.is_system);
+
+  const karte = t => {
+    const punkte = tplPunkte(t.id);
+    const kats = new Set(punkte.map(p=>p.category_id));
+    const arten = (t.object_types||[]).map(k=>objLabel(k));
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="row between" style="align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div class="row" style="gap:8px">
+            <span style="font-size:1.3rem">${t.icon||"📋"}</span>
+            <strong>${esc(t.name)}</strong>
+            ${t.is_system?'<span class="badge">Standard</span>':'<span class="badge info">eigen</span>'}
+          </div>
+          <div class="small muted" style="margin:4px 0 6px">${esc(t.description||"")}</div>
+          <div class="row" style="gap:6px">
+            <span class="badge brand">${punkte.length} Fragen</span>
+            <span class="badge">${kats.size} Bereiche</span>
+            ${arten.length && arten.length < 5 ? arten.map(a=>`<span class="badge">${esc(a)}</span>`).join("") : arten.length>=5?'<span class="badge">alle Objektarten</span>':""}
+          </div>
+        </div>
+        <div class="row" style="gap:6px">
+          <button class="btn sec sm" onclick="tplBearbeiten('${t.id}')">Fragen wählen</button>
+          <button class="btn ghost sm" onclick="tplKopieren('${t.id}')" title="Als Grundlage für eigene Vorlage">Kopieren</button>
+          ${!t.is_system?`<button class="btn ghost sm" onclick="tplLoeschen('${t.id}')">Löschen</button>`:""}
+        </div>
+      </div>
+    </div>`;
+  };
+
+  $("#view").innerHTML = `
+    <div class="row between" style="margin-bottom:6px">
+      <h1>Vorlagen</h1>
+      <button class="btn" onclick="tplNeu()">+ Eigene Vorlage</button>
+    </div>
+    <p class="small muted" style="margin-bottom:16px">
+      Ein Fragenkatalog bestimmt, welche Fragen bei einer Begehung abgefragt werden. Für eine Einzimmerwohnung
+      braucht es weniger als für eine ganze Wohnanlage. Beim Start einer Begehung wählst du den passenden Katalog,
+      danach kannst du immer noch einzelne Fragen ausblenden oder ganze Bereiche ausschließen.
+    </p>
+    ${eigene.length?`<h3>Eigene Kataloge</h3>${eigene.map(karte).join("")}`:""}
+    <h3>Standard-Kataloge</h3>
+    ${system.map(karte).join("")}
+  `;
+}
+
+function tplNeu(basisId){
+  const basis = basisId ? S.templates.find(t=>t.id===basisId) : null;
+  openModal(`
+    <h2>${basis?"Vorlage kopieren":"Eigene Vorlage"}</h2>
+    <p class="small muted" style="margin:-8px 0 14px">
+      ${basis?`Alle ${tplPunkte(basisId).length} Fragen aus "${esc(basis.name)}" werden übernommen und können danach angepasst werden.`
+             :"Startet leer. Im nächsten Schritt wählst du aus, welche Fragen enthalten sein sollen."}
+    </p>
+    <form onsubmit="return tplSpeichern(event, null, ${basisId?`'${basisId}'`:"null"})">
+      <div class="grid g2">
+        <div class="field"><label>Symbol</label><input name="icon" value="${basis?esc(basis.icon||"📋"):"📋"}" maxlength="4"></div>
+        <div class="field"><label>Sortierung</label><input name="sort_order" type="number" value="200"></div>
+      </div>
+      <div class="field"><label>Name *</label><input name="name" required value="${basis?esc(basis.name)+" (Kopie)":""}" placeholder="z. B. Kurzcheck Ferienwohnung"></div>
+      <div class="field"><label>Beschreibung</label><input name="description" value="${basis?esc(basis.description||""):""}" placeholder="Wofür ist dieser Katalog gedacht?"></div>
+      <label>Passt zu diesen Objektarten</label>
+      <div class="row" style="gap:8px;margin-bottom:16px">
+        ${OBJEKTTYPEN.map(([k,l])=>`<label class="chip-toggle" style="cursor:pointer;margin:0">
+          <input type="checkbox" name="ot" value="${k}" style="width:auto" ${basis&&(basis.object_types||[]).includes(k)?"checked":""}> ${l}
+        </label>`).join("")}
+      </div>
+      <div class="row">
+        <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+        <div class="spacer"></div>
+        <button class="btn" type="submit">Anlegen und Fragen wählen</button>
+      </div>
+    </form>`);
+}
+function tplKopieren(id){ tplNeu(id); }
+
+async function tplSpeichern(ev, id, basisId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const rec = {
+    name: fd.get("name"),
+    description: fd.get("description") || null,
+    icon: fd.get("icon") || "📋",
+    object_types: fd.getAll("ot"),
+    sort_order: Number(fd.get("sort_order")) || 200
+  };
+  if(id){
+    const {error} = await sb.from("templates").update(rec).eq("id", id);
+    if(error){ toast("Fehler: "+error.message,4000); return false; }
+    closeModal(); await loadCatalog(); go("templates"); return false;
+  }
+  rec.is_system = false; rec.created_by = S.user.id;
+  const {data, error} = await sb.from("templates").insert(rec).select().single();
+  if(error){ toast("Fehler: "+error.message,4000); return false; }
+
+  if(basisId){
+    const ids = [...(S.templateCriteria[basisId] || [])];
+    for(let i=0;i<ids.length;i+=200){
+      await sb.from("template_criteria").insert(ids.slice(i,i+200).map(cid => ({template_id:data.id, criterion_id:cid})));
+    }
+  }
+  closeModal();
+  await loadCatalog();
+  toast("Vorlage angelegt ✓");
+  tplBearbeiten(data.id);
+  return false;
+}
+
+async function tplLoeschen(id){
+  const t = S.templates.find(x=>x.id===id);
+  if(!confirm(`Vorlage "${t.name}" löschen? Bereits durchgeführte Begehungen bleiben unverändert.`)) return;
+  const {error} = await sb.from("templates").delete().eq("id",id);
+  if(error){ toast("Fehler: "+error.message,4000); return; }
+  await loadCatalog(); go("templates"); toast("Vorlage gelöscht");
+}
+
+function tplBearbeiten(id){
+  const t = S.templates.find(x=>x.id===id);
+  const drin = new Set(S.templateCriteria[id] || []);
+  const darfBearbeiten = !t.is_system || S.profile?.role === "admin";
+
+  const block = cat => {
+    const list = S.criteria.filter(c=>c.category_id===cat.id);
+    if(!list.length) return "";
+    const anzahl = list.filter(c=>drin.has(c.id)).length;
+    return `<div class="cat" id="tplcat-${cat.key}">
+      <div class="cat-head" onclick="this.parentElement.classList.toggle('open')">
+        <span class="ico">${cat.icon}</span>
+        <span class="t">${esc(cat.name)}</span>
+        <span class="badge ${anzahl?"brand":""}" id="tplcnt-${cat.key}">${anzahl}/${list.length}</span>
+        <span class="muted">▾</span>
+      </div>
+      <div class="cat-body">
+        <div style="padding:8px 14px;border-bottom:1px solid #f1f5f9" class="row">
+          <button type="button" class="btn sec sm" onclick="tplAlle('${cat.key}',true)">Alle</button>
+          <button type="button" class="btn sec sm" onclick="tplAlle('${cat.key}',false)">Keine</button>
+          <button type="button" class="btn sec sm" onclick="tplKritische('${cat.key}')">Nur sicherheitsrelevante</button>
+        </div>
+        ${list.map(c=>`<label class="crit" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:10px 14px">
+          <input type="checkbox" data-cat="${cat.key}" value="${c.id}" style="width:auto;margin-top:3px" ${drin.has(c.id)?"checked":""} onchange="tplZaehle('${cat.key}')">
+          <span style="flex:1">
+            <span style="font-weight:600">${esc(c.name)}</span>
+            ${c.critical?'<span class="badge bad xs">sicherheitsrelevant</span>':""}
+            ${c.hint?`<span class="crit-hint" style="display:block;margin:2px 0 0">${esc(c.hint)}</span>`:""}
+          </span>
+        </label>`).join("")}
+      </div>
+    </div>`;
+  };
+
+  openModal(`
+    <h2>${esc(t.name)}</h2>
+    <p class="small muted" style="margin:-8px 0 12px">
+      Wähle aus, welche Fragen dieser Katalog enthält.
+      ${t.is_system && !darfBearbeiten ? "Standard-Kataloge kann nur der Administrator ändern. Du kannst stattdessen eine Kopie anlegen." : ""}
+    </p>
+    <div class="row" style="margin-bottom:10px">
+      <span class="badge brand" id="tpl-summe">–</span>
+      <div class="spacer"></div>
+      <button type="button" class="btn ghost sm" onclick="document.querySelectorAll('#tpl-form .cat').forEach(c=>c.classList.add('open'))">Alle aufklappen</button>
+    </div>
+    <div id="tpl-form" style="max-height:52dvh;overflow:auto;margin-bottom:14px">
+      ${S.categories.map(block).join("")}
+    </div>
+    <div class="row">
+      <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+      <div class="spacer"></div>
+      ${darfBearbeiten?`<button class="btn" onclick="tplFragenSpeichern('${id}')">Speichern</button>`:`<button class="btn" onclick="closeModal();tplKopieren('${id}')">Als eigene Kopie anlegen</button>`}
+    </div>`);
+  tplSumme();
+}
+function tplZaehle(catKey){
+  const boxen = document.querySelectorAll(`#tpl-form input[data-cat="${catKey}"]`);
+  const an = [...boxen].filter(b=>b.checked).length;
+  const badge = el("tplcnt-"+catKey);
+  if(badge){ badge.textContent = `${an}/${boxen.length}`; badge.className = "badge" + (an?" brand":""); }
+  tplSumme();
+}
+function tplSumme(){
+  const alle = document.querySelectorAll("#tpl-form input[type=checkbox]");
+  const an = [...alle].filter(b=>b.checked).length;
+  const s = el("tpl-summe");
+  if(s) s.textContent = `${an} von ${alle.length} Fragen ausgewählt`;
+}
+function tplAlle(catKey, an){
+  document.querySelectorAll(`#tpl-form input[data-cat="${catKey}"]`).forEach(b=>b.checked = an);
+  tplZaehle(catKey);
+}
+function tplKritische(catKey){
+  document.querySelectorAll(`#tpl-form input[data-cat="${catKey}"]`).forEach(b=>{
+    const c = S.criteria.find(x=>x.id===b.value);
+    b.checked = !!(c && c.critical);
+  });
+  tplZaehle(catKey);
+}
+async function tplFragenSpeichern(id){
+  const gewaehlt = [...document.querySelectorAll("#tpl-form input[type=checkbox]")].filter(b=>b.checked).map(b=>b.value);
+  if(!gewaehlt.length && !confirm("Der Katalog enthält keine einzige Frage. Trotzdem speichern?")) return;
+  await sb.from("template_criteria").delete().eq("template_id", id);
+  for(let i=0;i<gewaehlt.length;i+=200){
+    const {error} = await sb.from("template_criteria").insert(gewaehlt.slice(i,i+200).map(cid=>({template_id:id, criterion_id:cid})));
+    if(error){ toast("Fehler: "+error.message,4000); return; }
+  }
+  closeModal();
+  await loadCatalog();
+  go("templates");
+  toast(`Gespeichert: ${gewaehlt.length} Fragen ✓`);
+}
+
+/* =========================================================
+   PRÜFKATALOG VERWALTEN
+   ========================================================= */
+async function viewCatalog(){
+  loading(true);
+  const [cats, crits] = await Promise.all([
+    sb.from("categories").select("*").order("sort_order"),
+    sb.from("criteria").select("*").order("sort_order")
+  ]);
+  const allCats = cats.data||[]; const allCrits = crits.data||[];
+  S.categories = allCats.filter(c=>c.active); S.criteria = allCrits.filter(c=>c.active);
+  const isAdmin = S.profile?.role === "admin";
+
+  $("#view").innerHTML = `
+    <div class="row between" style="margin-bottom:6px">
+      <h1>Prüfkatalog</h1>
+      <div class="row">
+        <button class="btn sec sm" onclick="editCategory()">+ Kategorie</button>
+        <button class="btn" onclick="editCriterion()">+ Prüfpunkt</button>
+      </div>
+    </div>
+    <p class="small muted" style="margin-bottom:14px">
+      ${allCrits.filter(c=>c.active).length} aktive Prüfpunkte in ${allCats.filter(c=>c.active).length} Kategorien.
+      Der Katalog gilt für alle künftigen Begehungen. Bereits laufende oder abgeschlossene Begehungen bleiben unverändert.
+    </p>
+    ${allCats.map(cat=>{
+      const list = allCrits.filter(c=>c.category_id===cat.id);
+      return `<div class="cat ${cat.active?"":"" }" style="${cat.active?"":"opacity:.55"}">
+        <div class="cat-head" onclick="this.parentElement.classList.toggle('open')">
+          <span class="ico">${cat.icon}</span>
+          <span class="t">${esc(cat.name)}</span>
+          <span class="badge">${list.filter(c=>c.active).length} Punkte</span>
+          <span class="badge ${cat.scope==="gebaeude"?"info":cat.scope==="einheit"?"brand":""}">${cat.scope==="beide"?"universell":cat.scope==="gebaeude"?"Gebäude":"Einheit"}</span>
+          ${cat.is_system?"":'<span class="badge info">eigen</span>'}
+          <span class="muted">▾</span>
+        </div>
+        <div class="cat-body">
+          <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9" class="row">
+            <button class="btn sec sm" onclick="editCriterion(null,'${cat.id}')">+ Prüfpunkt hier</button>
+            ${isAdmin?`<button class="btn ghost sm" onclick="editCategory('${cat.id}')">Kategorie bearbeiten</button>`:""}
+            ${isAdmin?`<button class="btn ghost sm" onclick="toggleCategory('${cat.id}',${!cat.active})">${cat.active?"Deaktivieren":"Aktivieren"}</button>`:""}
+          </div>
+          <table class="t" style="margin:0">
+            <tbody>
+            ${list.map(c=>`<tr style="${c.active?"":"opacity:.5"}">
+              <td style="width:52%"><strong>${esc(c.name)}</strong>${c.hint?`<div class="xs muted">${esc(c.hint)}</div>`:""}</td>
+              <td>${c.critical?'<span class="badge bad">sicherheitsrelevant</span>':""}</td>
+              <td class="xs">${c.scope==="beide"?"universell":c.scope==="gebaeude"?"Gebäude":"Einheit"}</td>
+              <td>${c.is_system?'<span class="xs muted">Standard</span>':'<span class="badge info">eigen</span>'}</td>
+              <td style="text-align:right;white-space:nowrap">
+                ${(isAdmin||c.created_by===S.user.id)?`<button class="btn ghost sm" onclick="editCriterion('${c.id}')">✎</button>
+                <button class="btn ghost sm" onclick="toggleCriterion('${c.id}',${!c.active})">${c.active?"🚫":"↺"}</button>`:""}
+              </td>
+            </tr>`).join("") || '<tr><td class="xs muted" style="padding:12px">Noch keine Prüfpunkte in dieser Kategorie.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join("")}
+  `;
+}
+function editCategory(id){
+  const c = id ? S.categories.find(x=>x.id===id) : null;
+  openModal(`
+    <h2>${id?"Kategorie bearbeiten":"Neue Kategorie"}</h2>
+    <form onsubmit="return saveCategory(event,${id?`'${id}'`:"null"})">
+      <div class="grid g2">
+        <div class="field"><label>Symbol</label><input name="icon" value="${esc(c?.icon||"📋")}" maxlength="4"></div>
+        <div class="field"><label>Sortierung</label><input name="sort_order" type="number" value="${c?.sort_order??999}"></div>
+      </div>
+      <div class="field"><label>Name *</label><input name="name" required value="${esc(c?.name||"")}"></div>
+      <div class="field"><label>Gilt für</label><select name="scope">
+        <option value="beide" ${c?.scope==="beide"?"selected":""}>Universell (Gebäude und Einheit)</option>
+        <option value="gebaeude" ${c?.scope==="gebaeude"?"selected":""}>Nur Gebäude / Allgemeinbereiche</option>
+        <option value="einheit" ${c?.scope==="einheit"?"selected":""}>Nur Wohnung / Einheit</option>
+      </select></div>
+      <div class="row"><button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button><div class="spacer"></div><button class="btn" type="submit">Speichern</button></div>
+    </form>`);
+}
+async function saveCategory(ev, id){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const rec = {name:fd.get("name"), icon:fd.get("icon")||"📋", scope:fd.get("scope"), sort_order:Number(fd.get("sort_order"))||999};
+  let error;
+  if(id){ ({error} = await sb.from("categories").update(rec).eq("id",id)); }
+  else {
+    rec.key = rec.name.toLowerCase().replace(/[^a-z0-9]+/g,"_").slice(0,30) + "_" + Math.random().toString(36).slice(2,6);
+    rec.is_system = false; rec.created_by = S.user.id;
+    ({error} = await sb.from("categories").insert(rec));
+  }
+  if(error){ toast("Fehler: "+error.message,4000); return false; }
+  closeModal(); toast("Gespeichert ✓"); go("catalog"); return false;
+}
+async function toggleCategory(id, active){
+  const {error} = await sb.from("categories").update({active}).eq("id",id);
+  if(error) return toast("Fehler: "+error.message,4000);
+  go("catalog");
+}
+function editCriterion(id, catId){
+  const c = id ? S.criteria.find(x=>x.id===id) : null;
+  openModal(`
+    <h2>${id?"Prüfpunkt bearbeiten":"Neuer Prüfpunkt"}</h2>
+    <form onsubmit="return saveCriterion(event,${id?`'${id}'`:"null"})">
+      <div class="field"><label>Kategorie *</label><select name="category_id">
+        ${S.categories.map(k=>`<option value="${k.id}" ${(c?.category_id||catId)===k.id?"selected":""}>${k.icon} ${esc(k.name)}</option>`).join("")}
+      </select></div>
+      <div class="field"><label>Bezeichnung *</label><input name="name" required value="${esc(c?.name||"")}" placeholder="z. B. Rauchwarnmelder funktionsfähig"></div>
+      <div class="field"><label>Hinweis für den Prüfer</label><input name="hint" value="${esc(c?.hint||"")}" placeholder="Worauf ist zu achten?"></div>
+      <div class="grid g2">
+        <div class="field"><label>Gilt für</label><select name="scope">
+          <option value="beide" ${(c?.scope||"beide")==="beide"?"selected":""}>Universell</option>
+          <option value="gebaeude" ${c?.scope==="gebaeude"?"selected":""}>Nur Gebäude</option>
+          <option value="einheit" ${c?.scope==="einheit"?"selected":""}>Nur Einheit</option>
+        </select></div>
+        <div class="field"><label>Sortierung</label><input name="sort_order" type="number" value="${c?.sort_order??999}"></div>
+      </div>
+      <label class="row xs" style="gap:7px;margin-bottom:14px"><input type="checkbox" name="critical" style="width:auto" ${c?.critical?"checked":""}> Sicherheitsrelevanter Punkt</label>
+      <div class="row"><button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button><div class="spacer"></div><button class="btn" type="submit">Speichern</button></div>
+    </form>`);
+}
+async function saveCriterion(ev, id){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const rec = {category_id:fd.get("category_id"), name:fd.get("name"), hint:fd.get("hint")||null,
+    scope:fd.get("scope"), critical:!!fd.get("critical"), sort_order:Number(fd.get("sort_order"))||999};
+  let error;
+  if(id){ ({error} = await sb.from("criteria").update(rec).eq("id",id)); }
+  else { rec.is_system = false; rec.created_by = S.user.id; ({error} = await sb.from("criteria").insert(rec)); }
+  if(error){ toast("Fehler: "+error.message,4000); return false; }
+  closeModal(); toast("Gespeichert ✓"); go("catalog"); return false;
+}
+async function toggleCriterion(id, active){
+  const {error} = await sb.from("criteria").update({active}).eq("id",id);
+  if(error) return toast("Fehler: "+error.message,4000);
+  go("catalog");
+}
+
+/* =========================================================
+   TEAM (nur Admin)
+   ========================================================= */
+async function viewTeam(){
+  if(S.profile?.role!=="admin"){ $("#view").innerHTML='<div class="empty">Nur für Administratoren.</div>'; return; }
+  loading(true);
+  const {data} = await sb.from("profiles").select("*").order("created_at");
+  S.profiles = data||[];
+  const wartend = S.profiles.filter(p=>p.status==="wartend");
+  const rest = S.profiles.filter(p=>p.status!=="wartend");
+  const statusBadge = s => s==="aktiv" ? '<span class="badge ok">aktiv</span>'
+    : s==="wartend" ? '<span class="badge warn">wartet auf Freigabe</span>'
+    : '<span class="badge bad">gesperrt</span>';
+
+  $("#view").innerHTML = `
+    <h1>Team</h1>
+    <p class="small muted" style="margin-bottom:14px">
+      Neue Kollegen registrieren sich selbst über den Link. Sie sehen zunächst nichts, bis du sie hier freigibst.
+    </p>
+
+    ${wartend.length ? `<div class="card" style="border-color:#fcd34d;background:#fffdf5">
+      <div class="row between" style="margin-bottom:8px">
+        <h3 style="margin:0">🔔 Wartet auf deine Freigabe (${wartend.length})</h3>
+      </div>
+      ${wartend.map(p=>`<div class="row between" style="padding:10px 0;border-top:1px solid #fde68a">
+        <div>
+          <strong>${esc(p.full_name||"Ohne Namen")}</strong>
+          <div class="xs muted">${esc(p.email)} · registriert am ${fmtDate(p.created_at)}</div>
+        </div>
+        <div class="row">
+          <button class="btn danger sm" onclick="setStatus('${p.id}','gesperrt')">Ablehnen</button>
+          <button class="btn sm" onclick="setStatus('${p.id}','aktiv')">Freigeben</button>
+        </div>
+      </div>`).join("")}
+    </div>` : `<div class="card"><span class="badge ok">Keine offenen Freigabe-Anfragen</span></div>`}
+
+    <div class="card">
+      <h3>Alle Konten</h3>
+      <table class="t"><thead><tr><th>Name</th><th>E-Mail</th><th>Rolle</th><th>Status</th><th>Seit</th><th></th></tr></thead><tbody>
+      ${rest.map(p=>`<tr>
+        <td><strong>${esc(p.full_name||"–")}</strong>${p.id===S.user.id?' <span class="badge brand">du</span>':""}</td>
+        <td class="small">${esc(p.email)}</td>
+        <td>${p.role==="admin"?'<span class="badge brand">Administrator</span>':'<span class="badge">Mitarbeiter</span>'}</td>
+        <td>${statusBadge(p.status)}</td>
+        <td class="xs mono">${fmtDate(p.created_at)}</td>
+        <td style="text-align:right;white-space:nowrap">
+          ${p.id!==S.user.id?`
+            <button class="btn ghost sm" onclick="setRole('${p.id}','${p.role==="admin"?"mitarbeiter":"admin"}')">${p.role==="admin"?"Zu Mitarbeiter":"Zu Admin"}</button>
+            <button class="btn ${p.status==="aktiv"?"danger":"sec"} sm" onclick="setStatus('${p.id}','${p.status==="aktiv"?"gesperrt":"aktiv"}')">${p.status==="aktiv"?"Sperren":"Freigeben"}</button>`:""}
+        </td></tr>`).join("")}
+      </tbody></table>
+    </div>`;
+}
+async function setRole(id, role){
+  const {error} = await sb.from("profiles").update({role}).eq("id",id);
+  if(error) return toast("Fehler: "+error.message,4000);
+  toast("Rolle geändert ✓"); go("team");
+}
+async function setStatus(id, status){
+  const {error} = await sb.from("profiles").update({status}).eq("id",id);
+  if(error) return toast("Fehler: "+error.message,4000);
+  toast(status==="aktiv"?"Zugang freigegeben ✓":status==="gesperrt"?"Zugang gesperrt":"Status geändert"); go("team");
+}
+
+/* =========================================================
+   MEIN KONTO
+   ========================================================= */
+function viewProfil(){
+  const p = S.profile||{};
+  $("#view").innerHTML = `
+    <h1>Mein Konto</h1>
+    <div class="card">
+      <form onsubmit="return saveProfile(event)">
+        <div class="grid g2">
+          <div class="field"><label>Name</label><input name="full_name" value="${esc(p.full_name||"")}"></div>
+          <div class="field"><label>Firma</label><input name="company" value="${esc(p.company||"")}"></div>
+        </div>
+        <div class="grid g2">
+          <div class="field"><label>Telefon</label><input name="phone" value="${esc(p.phone||"")}"></div>
+          <div class="field"><label>E-Mail</label><input value="${esc(p.email||"")}" disabled></div>
+        </div>
+        <div class="row"><span class="badge ${p.role==="admin"?"brand":""}">${p.role==="admin"?"Administrator":"Mitarbeiter"}</span><div class="spacer"></div><button class="btn" type="submit">Speichern</button></div>
+      </form>
+    </div>
+    <div class="card">
+      <h3>Passwort ändern</h3>
+      <form onsubmit="return changePw(event)">
+        <div class="field"><label>Neues Passwort</label><input name="pw" type="password" minlength="6" required placeholder="Mindestens 6 Zeichen"></div>
+        <button class="btn sec">Passwort aktualisieren</button>
+      </form>
+    </div>
+    <div class="card">
+      <h3>Datenbank</h3>
+      <p class="small muted" style="margin-bottom:8px">
+        Alle Daten liegen in deinem eigenen Supabase-Projekt, nicht im Browser und nicht bei Dritten.
+      </p>
+      <div class="xs mono muted" style="word-break:break-all;margin-bottom:10px">${esc(CONF ? CONF.url : "")}</div>
+      <button class="btn sec sm" onclick="showSetup()">Verbindung ändern</button>
+      <button class="btn ghost sm" onclick="verbindungTrennen()">In diesem Browser trennen</button>
+    </div>
+    <div class="card">
+      <h3>Abmelden</h3>
+      <p class="small muted">Du kannst dich auf jedem Gerät neu anmelden.</p>
+      <button class="btn danger" onclick="logout()">Jetzt abmelden</button>
+    </div>`;
+}
+async function saveProfile(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const rec = {full_name:fd.get("full_name")||null, company:fd.get("company")||null, phone:fd.get("phone")||null};
+  const {error} = await sb.from("profiles").update(rec).eq("id",S.user.id);
+  if(error){ toast("Fehler: "+error.message,4000); return false; }
+  Object.assign(S.profile, rec);
+  el("u-name").textContent = rec.full_name || S.user.email;
+  el("u-initials").textContent = initials(rec.full_name, S.user.email);
+  toast("Gespeichert ✓"); return false;
+}
+async function changePw(ev){
+  ev.preventDefault();
+  const pw = new FormData(ev.target).get("pw");
+  const {error} = await sb.auth.updateUser({password:pw});
+  if(error){ toast("Fehler: "+error.message,4000); return false; }
+  ev.target.reset(); toast("Passwort geändert ✓"); return false;
+}
+
+/* =========================================================
+   VERBINDUNG EINRICHTEN
+   ========================================================= */
+function showSetup(){
+  el("app").classList.add("hidden");
+  el("view-auth").classList.remove("hidden");
+  const c = CONF || {url:"", key:""};
+  el("view-auth").innerHTML = `
+    <div class="auth-card" style="max-width:520px">
+      <div style="text-align:center;margin-bottom:8px">
+        <svg width="54" height="54" viewBox="0 0 64 64" fill="none">
+          <path d="M32 6 60 27v31a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V27L32 6Z" fill="#eff6ff" stroke="#1d4ed8" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M24 61V40h16v21" stroke="#1d4ed8" stroke-width="3" stroke-linejoin="round"/>
+          <circle cx="47" cy="20" r="12" fill="#dc2626"/>
+          <path d="m41.5 20 3.8 4 7.2-7.6" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1 style="text-align:center;margin-bottom:6px">Immo<em style="font-style:normal;color:#dc2626">Check</em></h1>
+      <p class="auth-sub">Einmalige Einrichtung: verbinde deine eigene Datenbank</p>
+
+      <div class="note">
+        Deine Daten bleiben bei dir. ImmoCheck speichert nichts auf fremden Servern, sondern ausschließlich
+        in deinem eigenen, kostenlosen Supabase-Projekt. Die Einrichtung dauert rund fünf Minuten.
+      </div>
+
+      <details style="margin-bottom:14px">
+        <summary style="cursor:pointer;font-weight:600;font-size:.88rem;color:var(--brand)">So kommst du an die zwei Werte</summary>
+        <ol class="small muted" style="padding-left:18px;margin:10px 0 0;line-height:1.7">
+          <li>Auf <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a> kostenlos registrieren und ein neues Projekt anlegen (Region Frankfurt).</li>
+          <li>Im Projekt links auf <strong>SQL Editor</strong>, den Inhalt der Datei <code>setup.sql</code> einfügen und ausführen. Das legt alle Tabellen und die 179 Prüfpunkte an.</li>
+          <li>Unter <strong>Project Settings → API</strong> findest du die <strong>Project URL</strong> und den <strong>anon public</strong> Schlüssel. Beides hier eintragen.</li>
+          <li>Unter <strong>Authentication → Providers → Email</strong> die Option <em>Confirm email</em> ausschalten.</li>
+        </ol>
+      </details>
+
+      <div id="setup-err" class="err hidden"></div>
+
+      <form onsubmit="return speichereVerbindung(event)">
+        <div class="field">
+          <label>Project URL</label>
+          <input name="url" required placeholder="https://xxxxxxxx.supabase.co" value="${esc(c.url)}">
+        </div>
+        <div class="field">
+          <label>Anon public key</label>
+          <textarea name="key" required placeholder="eyJhbGciOi..." style="min-height:80px;font-size:12px;font-family:ui-monospace,monospace">${esc(c.key)}</textarea>
+        </div>
+        <button class="btn full" id="setup-btn" type="submit">Verbinden und prüfen</button>
+        ${CONF ? '<button type="button" class="btn sec full" style="margin-top:9px" onclick="location.reload()">Abbrechen</button>' : ""}
+      </form>
+      <p class="xs muted" style="text-align:center;margin:14px 0 0">
+        Die Zugangsdaten bleiben nur in diesem Browser gespeichert.
+      </p>
+    </div>`;
+}
+
+async function speichereVerbindung(ev){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const url = String(fd.get("url")).trim().replace(/\/+$/, "");
+  const key = String(fd.get("key")).trim();
+  const btn = el("setup-btn"); const alt = btn.innerHTML;
+  btn.innerHTML = '<div class="loader"></div>'; btn.disabled = true;
+  const fehler = m => { const e = el("setup-err"); e.innerHTML = m; e.classList.remove("hidden"); };
+  el("setup-err").classList.add("hidden");
+  try{
+    if(!/^https:\/\/.+\.supabase\.co$/.test(url) && !/^https?:\/\//.test(url))
+      throw new Error("Die Project URL sieht nicht richtig aus. Sie hat die Form https://xxxxxxxx.supabase.co");
+    const r = await fetch(`${url}/rest/v1/categories?select=key&limit=1`, {
+      headers: { apikey: key, Authorization: "Bearer " + key }
+    });
+    if(r.status === 401 || r.status === 403) throw new Error("Der Schlüssel wird nicht akzeptiert. Bitte den <strong>anon public</strong> Schlüssel verwenden.");
+    if(r.status === 404) throw new Error("Verbindung steht, aber die Tabellen fehlen. Bitte zuerst <code>setup.sql</code> im SQL Editor ausführen.");
+    if(!r.ok) throw new Error("Antwort vom Server: " + r.status + ". Bitte URL und Schlüssel prüfen.");
+    localStorage.setItem(CONF_STORE, JSON.stringify({url, key}));
+    location.reload();
+  }catch(err){
+    fehler(err.message && err.message.includes("Failed to fetch")
+      ? "Keine Verbindung zu dieser Adresse. Stimmt die Project URL?"
+      : (err.message || String(err)));
+    btn.innerHTML = alt; btn.disabled = false;
+  }
+  return false;
+}
+
+function verbindungTrennen(){
+  if(!confirm("Verbindung zu dieser Datenbank in diesem Browser lösen? Deine Daten bleiben in der Datenbank erhalten.")) return;
+  localStorage.removeItem(CONF_STORE);
+  location.reload();
+}
+
+/* =========================================================
+   INITIALISIERUNG
+   ========================================================= */
+(async function init(){
+  if(!sb){ showSetup(); return; }
+  setAuthMode("login");
+  try{ await boot(); }
+  catch(err){ console.error(err); el("view-auth").classList.remove("hidden"); }
+})();
+</script>
+</body>
+</html>
