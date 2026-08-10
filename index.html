@@ -502,6 +502,12 @@ main{padding:20px 0 60px}
 .chip input{width:auto;margin:0;accent-color:var(--brand)}
 .chip:has(input:checked){background:var(--brand-soft);border-color:var(--brand-2);color:var(--brand-dark)}
 .chip:active{transform:scale(.97)}
+/* Eingescannte Papierbögen */
+.scan-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.scan{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:#fff}
+.scan img{width:100%;height:190px;object-fit:cover;display:block;cursor:zoom-in}
+.bogen-nr{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:6px;
+  background:var(--brand-soft);color:var(--brand-dark);font-size:.72rem;font-weight:800;vertical-align:middle}
 .substep{border-left:3px solid var(--brand-soft);padding-left:12px;margin:14px 0}
 .substep>h4{font-size:.82rem;text-transform:uppercase;letter-spacing:.04em;color:var(--brand);margin:0 0 8px}
 
@@ -813,6 +819,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const fmtDate = d => d ? new Date(d).toLocaleDateString("de-AT",{day:"2-digit",month:"2-digit",year:"numeric"}) : "–";
 const fmtDateTime = d => d ? new Date(d).toLocaleString("de-AT",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "–";
 const objLabel = k => (OBJEKTTYPEN.find(t=>t[0]===k)||[,k])[1];
+const catName = id => (S.categories.find(c=>c.id===id)||{}).name || "Sonstiges";
 const scaleOf = v => SCALE.find(s=>s.v===Number(v)) || null;
 
 function toast(msg, ms=2600){
@@ -989,7 +996,7 @@ function markTab(){
 async function loadCatalog(){
   const [cats, crits, tpls, tcs] = await Promise.all([
     sb.from("categories").select("*").eq("active", true).order("sort_order"),
-    sb.from("criteria").select("*").eq("active", true).order("sort_order"),
+    sb.from("criteria").select("*").eq("active", true).is("property_id", null).order("sort_order"),
     sb.from("templates").select("*").eq("active", true).order("sort_order"),
     sb.from("template_criteria").select("*")
   ]);
@@ -1271,15 +1278,18 @@ async function deleteProperty(id){
 async function viewProperty(){
   const id = S.params.id;
   loading(true);
-  const [pr, un, ins] = await Promise.all([
+  const [pr, un, ins, eig] = await Promise.all([
     sb.from("properties").select("*").eq("id",id).maybeSingle(),
     sb.from("units").select("*").eq("property_id",id).order("label"),
-    sb.from("inspections").select("*").eq("property_id",id).order("inspection_date",{ascending:false})
+    sb.from("inspections").select("*").eq("property_id",id).order("inspection_date",{ascending:false}),
+    sb.from("criteria").select("*").eq("property_id",id).eq("active",true).order("sort_order")
   ]);
   const p = pr.data;
   if(!p){ $("#view").innerHTML = '<div class="empty">Immobilie nicht gefunden.</div>'; return; }
   const units = un.data || [];
   const list = ins.data || [];
+  const eigene = eig.data || [];
+  const SCOPE_LABEL = {gebaeude:"nur Gebäude", einheit:"nur Wohnung", beide:"Gebäude und Wohnung"};
   const done = list.filter(i=>i.status==="abgeschlossen" && i.score!=null);
   const trend = done.slice(0,10).reverse();
   const unitName = uid => (units.find(u=>u.id===uid)||{}).label;
@@ -1344,6 +1354,28 @@ async function viewProperty(){
         ${p.structure_notes?`<div class="small" style="margin-top:10px">${esc(p.structure_notes).replace(/\n/g,"<br>")}</div>`:""}
       </div>`;
     })()}
+
+    <div class="card">
+      <div class="row between">
+        <h3 style="margin:0">Eigene Prüfpunkte ${eigene.length?`<span class="badge brand">${eigene.length}</span>`:""}</h3>
+        <button class="btn sec sm" onclick="editPropCriterion('${p.id}')">+ Frage</button>
+      </div>
+      <div class="small muted" style="margin-bottom:10px">
+        Fragen, die es nur bei diesem Objekt gibt. Sie kommen bei jeder Begehung dieses Objekts automatisch dazu, zusätzlich zum gewählten Katalog.
+      </div>
+      ${eigene.length? `<div class="unit-list">
+        ${eigene.map(c=>`<div class="unit">
+          <div class="nr">${c.critical?"❗":"＋"}</div>
+          <div class="txt">
+            <strong>${esc(c.name)}</strong>
+            <small>${esc(catName(c.category_id))} · ${esc(SCOPE_LABEL[c.scope]||c.scope)}${c.critical?" · kritisch":""}${c.hint?" · "+esc(c.hint):""}</small>
+          </div>
+          <div class="act">
+            <button class="btn ghost sm" title="Bearbeiten" onclick="editPropCriterion('${p.id}','${c.id}')">✎</button>
+          </div>
+        </div>`).join("")}
+      </div>` : `<div class="small muted">Noch keine eigenen Fragen. Sinnvoll für Dinge, die es nur hier gibt, zum Beispiel „Schranken­anlage Tiefgarage" oder „Zisterne im Hof".</div>`}
+    </div>
 
     <div class="card">
       <div class="row between"><h3 style="margin:0">Einheiten / Wohnungen ${units.length?`<span class="badge brand">${units.length}</span>`:""}</h3><button class="btn sec sm" onclick="editUnit('${p.id}')">+ Einheit</button></div>
@@ -1459,6 +1491,70 @@ async function deleteUnit(unitId, propId){
   closeModal(); go("property",{id:propId});
 }
 
+/* =========================================================
+   EIGENE PRÜFPUNKTE JE IMMOBILIE
+   ========================================================= */
+async function editPropCriterion(propId, critId){
+  let c = {};
+  if(critId){ c = (await sb.from("criteria").select("*").eq("id",critId).maybeSingle()).data || {}; }
+  const f = k => esc(c[k] ?? "");
+  const kats = S.categories.slice().sort((a,b)=>a.sort_order-b.sort_order);
+  openModal(`
+    <h2>${critId?"Frage bearbeiten":"Eigene Frage"}</h2>
+    <div class="small muted" style="margin:-8px 0 14px">Gilt nur für dieses Objekt und kommt bei jeder Begehung automatisch dazu.</div>
+    <form onsubmit="return savePropCriterion(event,'${propId}',${critId?`'${critId}'`:"null"})">
+      <div class="field"><label>Frage *</label><input name="name" required value="${f("name")}" placeholder="z. B. Schrankenanlage Tiefgarage funktionsfähig"></div>
+      <div class="field"><label>Hinweis für den Prüfer</label><input name="hint" value="${f("hint")}" placeholder="Worauf achten? Wo zu finden?"></div>
+      <div class="field"><label>Bereich *</label>
+        <select name="category_id" required>${kats.map(k=>`<option value="${k.id}" ${c.category_id===k.id?"selected":""}>${esc(k.icon||"")} ${esc(k.name)}</option>`).join("")}</select>
+      </div>
+      <div class="field"><label>Gilt für</label>
+        <select name="scope">
+          <option value="beide"    ${c.scope==="beide"||!c.scope?"selected":""}>Gebäude und Wohnung</option>
+          <option value="gebaeude" ${c.scope==="gebaeude"?"selected":""}>Nur Gebäudebegehung</option>
+          <option value="einheit"  ${c.scope==="einheit"?"selected":""}>Nur Wohnungsbegehung</option>
+        </select>
+        <div class="xs muted" style="margin-top:4px">So passt die Frage nur dort, wo sie sinnvoll ist. Bei einer Einzimmerwohnung nimmst du „Nur Wohnungsbegehung".</div>
+      </div>
+      <label class="row xs" style="gap:6px;margin:0 0 14px"><input type="checkbox" name="critical" style="width:auto" ${c.critical?"checked":""}> Kritischer Punkt, im Protokoll hervorgehoben</label>
+      <div class="row">
+        <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+        <div class="spacer"></div>
+        ${critId?`<button type="button" class="btn danger sm" onclick="deletePropCriterion('${critId}','${propId}')">Löschen</button>`:""}
+        <button class="btn" type="submit">Speichern</button>
+      </div>
+    </form>`);
+}
+
+async function savePropCriterion(ev, propId, critId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const rec = {
+    property_id: propId,
+    category_id: fd.get("category_id"),
+    name: fd.get("name"),
+    hint: fd.get("hint") || null,
+    scope: fd.get("scope") || "beide",
+    critical: !!fd.get("critical"),
+    is_system: false,
+    active: true
+  };
+  if(!critId){ rec.created_by = S.user.id; rec.sort_order = 900; }
+  const {error} = critId
+    ? await sb.from("criteria").update(rec).eq("id",critId)
+    : await sb.from("criteria").insert(rec);
+  if(error){ toast("Fehler: "+error.message,4000); return false; }
+  closeModal(); toast("Gespeichert ✓"); go("property",{id:propId});
+  return false;
+}
+
+async function deletePropCriterion(critId, propId){
+  if(!confirm("Diese Frage löschen? Bereits durchgeführte Begehungen bleiben unverändert.")) return;
+  const {error} = await sb.from("criteria").delete().eq("id",critId);
+  if(error){ toast("Fehler: "+error.message,4000); return; }
+  closeModal(); toast("Gelöscht ✓"); go("property",{id:propId});
+}
+
 /* Nächste freie Bezeichnung: "Top 3" wird zu "Top 4", "EG links" zu "EG links 2". */
 function naechsteBezeichnung(basis, vorhanden){
   const treffer = String(basis||"Einheit").match(/^(.*?)(\d+)\s*$/);
@@ -1567,12 +1663,20 @@ async function createInspection(ev, propId){
   const fd = new FormData(ev.target);
   const tplId = fd.get("template_id");
   const tpl = S.templates.find(t => t.id === tplId);
-  const punkte = tplPunkte(tplId);
+  const unitId = fd.get("unit_id") || null;
+
+  /* Eigene Fragen dieses Objekts dazunehmen, aber nur die, die zum Umfang passen. */
+  const erlaubt = unitId ? ["einheit","beide"] : ["gebaeude","beide"];
+  const eigene = ((await sb.from("criteria").select("*")
+      .eq("property_id", propId).eq("active", true).order("sort_order")).data || [])
+    .filter(c => erlaubt.includes(c.scope || "beide"));
+
+  const punkte = tplPunkte(tplId).concat(eigene);
   if(!punkte.length){ toast("Dieser Katalog enthält keine Prüfpunkte.", 4000); return false; }
 
   const rec = {
     property_id: propId,
-    unit_id: fd.get("unit_id") || null,
+    unit_id: unitId,
     title: fd.get("title") || "Begehung",
     inspection_date: fd.get("inspection_date"),
     inspector_id: S.user.id,
@@ -1608,7 +1712,7 @@ async function createInspection(ev, propId){
 /* =========================================================
    BEGEHUNG DURCHFÜHREN
    ========================================================= */
-const IS = { insp:null, prop:null, items:[], photoUrls:{}, filter:"alle", skipped:{} };
+const IS = { insp:null, prop:null, unit:null, items:[], photoUrls:{}, scanUrls:[], filter:"alle", skipped:{} };
 
 /* Punkte, die tatsächlich in die Wertung eingehen */
 function aktiveItems(items){
@@ -1621,13 +1725,26 @@ async function loadInspection(id){
   if(!insp) return null;
   const prop = (await sb.from("properties").select("*").eq("id",insp.property_id).maybeSingle()).data;
   const items = (await sb.from("inspection_items").select("*").eq("inspection_id",id).order("sort_order")).data || [];
+  IS.unit = insp.unit_id
+    ? (await sb.from("units").select("*").eq("id",insp.unit_id).maybeSingle()).data
+    : null;
   IS.insp = insp; IS.prop = prop; IS.items = items;
+  /* Durchlaufende Nummer, identisch mit der auf dem Papierbogen */
+  aktiveItems(items).slice().sort((a,b)=>a.sort_order-b.sort_order)
+    .forEach((it, idx) => { it.__nr = idx + 1; });
   IS.skipped = (insp.skipped_categories && typeof insp.skipped_categories === "object") ? insp.skipped_categories : {};
   const paths = items.filter(i=>i.photo_path).map(i=>i.photo_path);
   IS.photoUrls = {};
   if(paths.length){
     const {data} = await sb.storage.from("check-fotos").createSignedUrls(paths, 3600);
     (data||[]).forEach(d => { if(d.signedUrl) IS.photoUrls[d.path] = d.signedUrl; });
+  }
+  /* Eingescannte Papierbögen */
+  IS.scanUrls = [];
+  const scans = Array.isArray(insp.scan_paths) ? insp.scan_paths : [];
+  if(scans.length){
+    const {data} = await sb.storage.from("check-fotos").createSignedUrls(scans, 3600);
+    IS.scanUrls = scans.map(p => ({path:p, url:(data||[]).find(d=>d.path===p)?.signedUrl || null}));
   }
   return insp;
 }
@@ -1690,6 +1807,8 @@ function renderInspection(){
         <textarea id="gen-notes" onchange="saveInspField('general_notes', this.value)" placeholder="Beobachtungen, Gesprächsinhalte, Besonderheiten …">${esc(insp.general_notes||"")}</textarea>
       </div>
     </div>
+
+    ${scanCardHtml()}
 
     <div class="row" style="margin-bottom:12px">
       <button class="btn ${IS.filter==="alle"?"":"sec"} sm" onclick="setFilter('alle')">Alle (${items.length})</button>
@@ -1782,7 +1901,7 @@ function renderItem(i){
   return `<div class="crit" id="item-${i.id}">
     <div class="row between" style="align-items:flex-start">
       <div style="flex:1;min-width:0">
-        <div class="crit-name">${esc(i.criterion_name)} ${i.critical?'<span class="badge bad xs">sicherheitsrelevant</span>':""}${i.is_custom?'<span class="badge info xs">eigen</span>':""}</div>
+        <div class="crit-name">${i.__nr?`<span class="bogen-nr" title="Nummer auf dem Papierbogen">${i.__nr}</span> `:""}${esc(i.criterion_name)} ${i.critical?'<span class="badge bad xs">sicherheitsrelevant</span>':""}${i.is_custom?'<span class="badge info xs">eigen</span>':""}</div>
         ${i.hint?`<div class="crit-hint">${esc(i.hint)}</div>`:""}
       </div>
       <div class="item-menu">
@@ -1940,6 +2059,94 @@ function refreshItem(id){
 function updateHeaderStats(){
   const st = itemStats(aktiveItems(IS.items));
   document.querySelectorAll(".progressbar > i").forEach(b=>b.style.width = st.progress+"%");
+}
+
+/* Abfotografierten oder eingescannten Papierbogen anhängen.
+   Mehrere Seiten auf einmal sind möglich. */
+async function uploadScan(input){
+  const dateien = [...(input.files||[])];
+  if(!dateien.length) return;
+  toast(`${dateien.length} Seite${dateien.length>1?"n":""} wird hochgeladen …`);
+  try{
+    const neu = [];
+    for(const file of dateien){
+      const blob = await resizeImage(file, 2000, .8);   // höher als Fotos, damit Handschrift lesbar bleibt
+      const path = `scans/${IS.insp.id}/${Date.now()}-${Math.random().toString(36).slice(2,7)}.jpg`;
+      const {error} = await sb.storage.from("check-fotos").upload(path, blob, {contentType:"image/jpeg", upsert:true});
+      if(error) throw error;
+      neu.push(path);
+    }
+    const alle = (Array.isArray(IS.insp.scan_paths) ? IS.insp.scan_paths : []).concat(neu);
+    const {error:e2} = await sb.from("inspections").update({scan_paths: alle}).eq("id", IS.insp.id);
+    if(e2) throw e2;
+    IS.insp.scan_paths = alle;
+    input.value = "";
+    await loadInspection(IS.insp.id);
+    renderScanCard();
+    toast(`${neu.length} Seite${neu.length>1?"n":""} gespeichert ✓`);
+  }catch(err){ toast("Scan-Fehler: "+(err.message||err), 5000); }
+}
+
+async function deleteScan(path){
+  if(!confirm("Diese Seite entfernen?")) return;
+  try{
+    await sb.storage.from("check-fotos").remove([path]);
+    const rest = (IS.insp.scan_paths||[]).filter(p => p !== path);
+    await sb.from("inspections").update({scan_paths: rest}).eq("id", IS.insp.id);
+    IS.insp.scan_paths = rest;
+    await loadInspection(IS.insp.id);
+    renderScanCard();
+    toast("Entfernt ✓");
+  }catch(err){ toast("Fehler: "+(err.message||err), 4000); }
+}
+
+async function saveScanSummary(el){
+  const wert = el.value.trim() || null;
+  const {error} = await sb.from("inspections").update({scan_summary: wert}).eq("id", IS.insp.id);
+  if(error){ toast("Fehler: "+error.message, 4000); return; }
+  IS.insp.scan_summary = wert;
+  toast("Zusammenfassung gespeichert ✓");
+}
+
+/* Zeichnet die Papierbogen-Karte neu, ohne die ganze Begehung neu aufzubauen. */
+function renderScanCard(){
+  const ziel = document.getElementById("scan-card");
+  if(ziel) ziel.outerHTML = scanCardHtml();
+}
+
+function scanCardHtml(){
+  const insp = IS.insp;
+  const scans = IS.scanUrls || [];
+  return `<div class="card" id="scan-card">
+    <div class="row between"><h3 style="margin:0">Papier und Scan</h3>
+      <button class="btn sec sm" onclick="makePaperSheet('${insp.id}')">🖨️ Bogen drucken</button>
+    </div>
+    <div class="small muted" style="margin-bottom:10px">
+      Bogen ausdrucken, vor Ort mit dem Stift ankreuzen, danach hier abfotografieren. Das Bild bleibt gespeichert und ist am Handy jederzeit abrufbar.
+    </div>
+
+    ${scans.length ? `<div class="scan-grid">
+      ${scans.map((s,i)=>`<div class="scan">
+        ${s.url?`<a href="${s.url}" target="_blank" rel="noopener"><img src="${s.url}" alt="Seite ${i+1}" loading="lazy"></a>`:`<div class="small muted" style="padding:20px">Bild nicht lesbar</div>`}
+        <div class="row between" style="padding:6px 8px">
+          <span class="xs muted">Seite ${i+1}</span>
+          <button class="btn ghost sm" onclick="deleteScan('${s.path}')">✕</button>
+        </div>
+      </div>`).join("")}
+    </div>` : ""}
+
+    <label class="btn sec full" style="margin-top:10px">
+      📷 Ausgefüllten Bogen fotografieren oder scannen
+      <input type="file" accept="image/*" multiple capture="environment" style="display:none" onchange="uploadScan(this)">
+    </label>
+
+    <div class="field" style="margin-top:14px">
+      <label>Handschriftliche Anmerkungen als Text</label>
+      <textarea id="scan-summary" rows="4" placeholder="Was auf dem Bogen handschriftlich steht, hier eintippen. Landet im Protokoll."
+        onchange="saveScanSummary(this)">${esc(insp.scan_summary||"")}</textarea>
+      <div class="xs muted" style="margin-top:4px">Wird beim Verlassen des Feldes gespeichert.</div>
+    </div>
+  </div>`;
 }
 
 async function uploadPhoto(itemId, input){
@@ -2189,6 +2396,111 @@ async function reopenInspection(id){
 const PRES_TXT = {vorhanden:"Vorhanden / OK", nicht_vorhanden:"NICHT vorhanden", nicht_relevant:"Nicht relevant", offen:"Offen"};
 const RATE_TXT = {1:"Sehr schlecht",2:"Schlecht",3:"Mittel",4:"Gut",5:"Sehr gut"};
 
+/* Leerer Bogen zum Ausdrucken und mit dem Stift ausfüllen.
+   Die Nummern entsprechen exakt denen in der Übertragen-Ansicht. */
+async function makePaperSheet(id){
+  toast("Bogen wird erstellt …");
+  try{
+    if(!IS.insp || IS.insp.id !== id) await loadInspection(id);
+    const {insp, prop, items} = IS;
+    const aktiv = aktiveItems(items).slice().sort((a,b)=>a.sort_order-b.sort_order);
+    if(!aktiv.length){ toast("Diese Begehung enthält keine Prüfpunkte.", 4000); return; }
+
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:"a4"});
+    const W = doc.internal.pageSize.getWidth();
+    const M = 12;
+
+    doc.setFillColor(29,78,216); doc.rect(0,0,W,28,"F");
+    doc.setFillColor(220,38,38); doc.rect(0,28,W,1.6,"F");
+    doc.setTextColor(255); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+    doc.text("Begehungsbogen zum Ausfüllen", M, 12);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
+    doc.text(`${insp.title||"Begehung"} · ${fmtDate(insp.inspection_date)}`, M, 19);
+    doc.setFontSize(8);
+    doc.text("Ankreuzen, danach abfotografieren und in ImmoCheck hochladen", M, 24.5);
+    doc.setTextColor(30,41,59);
+
+    const adr = [[prop.street, prop.house_number].filter(Boolean).join(" "), [prop.zip, prop.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const einheit = insp.unit_id ? (IS.unit?.label || "Einheit") : "Gesamtes Gebäude";
+    doc.autoTable({
+      startY: 34, theme:"plain",
+      styles:{fontSize:8.5, cellPadding:1.2, textColor:[30,41,59]},
+      columnStyles:{0:{fontStyle:"bold",cellWidth:24},2:{fontStyle:"bold",cellWidth:24}},
+      body:[
+        ["Objekt", prop.name||"-", "Umfang", einheit],
+        ["Adresse", adr||"-", "Objektart", objLabel(prop.object_type)],
+        ["Prüfer", insp.inspector_name||"-", "Datum", fmtDate(insp.inspection_date)]
+      ]
+    });
+
+    let y = doc.lastAutoTable.finalY + 4;
+    doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+    doc.text("Bewertung ankreuzen:  1 = sehr schlecht   2 = schlecht   3 = mittel   4 = gut   5 = sehr gut   |   n.v. = nicht vorhanden", M, y);
+    y += 4;
+
+    /* Nach Bereich gruppieren, Nummerierung läuft durch */
+    const bereiche = [];
+    aktiv.forEach((it, i) => {
+      if(it.__nr == null) it.__nr = i + 1;
+      const letzter = bereiche[bereiche.length-1];
+      if(letzter && letzter.name === it.category_name) letzter.items.push(it);
+      else bereiche.push({name: it.category_name, items:[it]});
+    });
+
+    bereiche.forEach(b => {
+      doc.autoTable({
+        startY: y,
+        head: [[{content:b.name, colSpan:9, styles:{halign:"left", fillColor:[219,234,254], textColor:[29,78,216], fontStyle:"bold", fontSize:9}}],
+               ["Nr", "Prüfpunkt", "1","2","3","4","5","n.v.","Notiz"]],
+        body: b.items.map(it => [
+          String(it.__nr),
+          it.criterion_name + (it.critical ? "  (!)" : ""),
+          "","","","","","",""
+        ]),
+        theme:"grid",
+        styles:{fontSize:8, cellPadding:{top:2.1,bottom:2.1,left:1.5,right:1.5}, textColor:[30,41,59], lineColor:[203,213,225], lineWidth:0.2},
+        headStyles:{fillColor:[241,245,249], textColor:[71,85,105], fontSize:7.5, halign:"center"},
+        columnStyles:{
+          0:{cellWidth:8, halign:"center", textColor:[100,116,139]},
+          1:{cellWidth:74},
+          2:{cellWidth:7, halign:"center"}, 3:{cellWidth:7, halign:"center"},
+          4:{cellWidth:7, halign:"center"}, 5:{cellWidth:7, halign:"center"},
+          6:{cellWidth:7, halign:"center"}, 7:{cellWidth:9, halign:"center"},
+          8:{cellWidth:"auto"}
+        },
+        margin:{left:M, right:M}
+      });
+      y = doc.lastAutoTable.finalY + 3;
+      if(y > 250){ doc.addPage(); y = 16; }
+    });
+
+    if(y > 235){ doc.addPage(); y = 16; }
+    doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    doc.text("Allgemeine Anmerkungen", M, y); y += 4;
+    doc.setDrawColor(203,213,225);
+    for(let i=0;i<5;i++){ doc.line(M, y+i*7, W-M, y+i*7); }
+    y += 5*7 + 6;
+    doc.setFont("helvetica","normal"); doc.setFontSize(8);
+    doc.line(M, y+10, M+62, y+10); doc.text("Prüfer, Unterschrift", M, y+14);
+    doc.line(W-M-62, y+10, W-M, y+10); doc.text("Anwesende Person, Unterschrift", W-M-62, y+14);
+
+    /* Seitenfuß mit Kennung, damit ein Scan später zuordenbar bleibt */
+    const seiten = doc.internal.getNumberOfPages();
+    for(let s=1;s<=seiten;s++){
+      doc.setPage(s);
+      doc.setFontSize(7); doc.setTextColor(148,163,184);
+      doc.text(`ImmoCheck · Bogen-Kennung ${id.slice(0,8)} · Seite ${s} von ${seiten}`, M, doc.internal.pageSize.getHeight()-7);
+    }
+
+    const datei = `Begehungsbogen_${(prop.name||"Objekt").replace(/[^\wäöüÄÖÜß -]/g,"").trim().replace(/\s+/g,"_")}_${insp.inspection_date}.pdf`;
+    doc.save(datei);
+    toast("Bogen erstellt ✓");
+  }catch(e){
+    toast("Fehler beim Bogen: "+e.message, 5000);
+  }
+}
+
 async function makePdf(id){
   toast("PDF wird erstellt …");
   try{
@@ -2250,6 +2562,22 @@ async function makePdf(id){
       doc.setFont("helvetica","normal"); doc.setFontSize(9);
       const lines = doc.splitTextToSize(insp.general_notes, W-2*M);
       doc.text(lines, M, y); y += lines.length*4.4 + 4;
+    }
+
+    /* Vom Papierbogen übernommene Anmerkungen */
+    if(insp.scan_summary){
+      if(y > 240){ doc.addPage(); y = 18; }
+      doc.setFont("helvetica","bold"); doc.setFontSize(10);
+      doc.text("Anmerkungen vom Papierbogen", M, y); y += 5;
+      doc.setFont("helvetica","normal"); doc.setFontSize(9);
+      const lines = doc.splitTextToSize(insp.scan_summary, W-2*M);
+      doc.text(lines, M, y); y += lines.length*4.4 + 4;
+    }
+    const scanAnzahl = (insp.scan_paths||[]).length;
+    if(scanAnzahl){
+      doc.setFont("helvetica","italic"); doc.setFontSize(8.5); doc.setTextColor(100,116,139);
+      doc.text(`${scanAnzahl} eingescannte Seite${scanAnzahl>1?"n":""} des Papierbogens sind in ImmoCheck hinterlegt.`, M, y);
+      doc.setTextColor(30,41,59); y += 6;
     }
 
     /* Ausgeschlossene Bereiche */
@@ -2615,7 +2943,7 @@ async function viewCatalog(){
   loading(true);
   const [cats, crits] = await Promise.all([
     sb.from("categories").select("*").order("sort_order"),
-    sb.from("criteria").select("*").order("sort_order")
+    sb.from("criteria").select("*").is("property_id", null).order("sort_order")
   ]);
   const allCats = cats.data||[]; const allCrits = crits.data||[];
   S.categories = allCats.filter(c=>c.active); S.criteria = allCrits.filter(c=>c.active);

@@ -563,6 +563,16 @@ alter table public.inspections add column if not exists template_id uuid referen
 alter table public.inspections add column if not exists template_name text;
 alter table public.inspections add column if not exists hidden_count int not null default 0;
 
+-- Eigene Pruefpunkte, die nur zu einer bestimmten Immobilie gehoeren.
+-- property_id null bedeutet: gilt global, wie bisher.
+alter table public.criteria add column if not exists property_id uuid
+  references public.properties(id) on delete cascade;
+create index if not exists criteria_property_id_idx on public.criteria(property_id);
+
+-- Eingescannte Papierboegen und die abgetippte Zusammenfassung
+alter table public.inspections add column if not exists scan_paths   text[] default '{}';
+alter table public.inspections add column if not exists scan_summary text;
+
 alter table public.templates enable row level security;
 alter table public.template_criteria enable row level security;
 
