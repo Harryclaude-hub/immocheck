@@ -3303,6 +3303,11 @@ function zeichenMerkmale(maske, w, h, x0, y0, x1, y1){
      Ein wirklich leeres Kästchen liegt dank örtlicher Schwelle nahe null. */
   if(tinte < 5 || tinte/flaeche < 0.007) return null;
   const bw = maxX-minX+1, bh = maxY-minY+1;
+  /* Rest einer gedruckten Kästchenlinie: zieht sich über die ganze Breite,
+     ist aber flach. Das ist kein Zeichen, sondern der Rahmen. */
+  const ueberBreite = bw >= (x1-x0)*0.86;
+  const flach = bh <= (y1-y0)*0.28;
+  if(ueberBreite && flach) return null;
   const G = 8, v = new Float64Array(G*G);
   for(let y=minY;y<=maxY;y++) for(let x=minX;x<=maxX;x++){
     if(!maske[y*w+x]) continue;
@@ -3351,7 +3356,9 @@ function erkenneZeichen(mm){
   for(const m of muster){
     let d = 0;
     for(let i=0;i<64;i++){ const t = mm.v[i]-m.v[i]; d += t*t; }
-    d += 0.03*Math.pow(Math.log((mm.seiten||1)/(m.seiten||1)), 2);
+    /* Das Seitenverhältnis stärker gewichten: sonst wird eine schmale 1
+       mit einem Komma verwechselt, weil beide wenig Fläche belegen. */
+    d += 0.12*Math.pow(Math.log((mm.seiten||1)/(m.seiten||1)), 2);
     if(d < jeKlasse[m.klasse]) jeKlasse[m.klasse] = d;
   }
   const sortiert = jeKlasse.map((d,k)=>({d,k})).sort((a,b)=>a.d-b.d);
@@ -3364,7 +3371,7 @@ function erkenneZeichen(mm){
 function leseZiffern(maske, w, h, H, layout, seite){
   const proNr = {};
   (layout.ziffern||[]).filter(z => z.seite === seite).forEach(z => {
-    const ix = z.w*0.16, iy = z.h*0.14;              // Rahmenlinien aussparen
+    const ix = z.w*0.22, iy = z.h*0.19;              // Rahmenlinien großzügig aussparen
     const e = [abbilden(H, z.x+ix, z.y+iy), abbilden(H, z.x+z.w-ix, z.y+iy),
                abbilden(H, z.x+z.w-ix, z.y+z.h-iy), abbilden(H, z.x+ix, z.y+z.h-iy)];
     const x0 = Math.max(0, Math.floor(Math.min(...e.map(p=>p.x))));
