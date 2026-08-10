@@ -576,6 +576,33 @@ alter table public.inspections add column if not exists scan_summary text;
 -- Geometrie des gedruckten Bogens: wo liegt welches Ankreuzkaestchen.
 alter table public.inspections add column if not exists sheet_layout jsonb;
 
+-- Wie soll eine Frage beantwortet werden
+alter table public.criteria add column if not exists answer_type text not null default 'skala';
+alter table public.criteria drop constraint if exists criteria_answer_type_check;
+alter table public.criteria add constraint criteria_answer_type_check
+  check (answer_type in ('skala','ja_nein','messwert','text','auswahl'));
+alter table public.criteria add column if not exists unit      text;
+alter table public.criteria add column if not exists options   text[] default '{}';
+alter table public.criteria add column if not exists min_value numeric;
+alter table public.criteria add column if not exists max_value numeric;
+
+-- Fragenkatalog kann an eine einzelne Immobilie gebunden werden
+alter table public.templates add column if not exists property_id uuid
+  references public.properties(id) on delete cascade;
+create index if not exists templates_property_id_idx on public.templates(property_id);
+
+-- Die Antwort selbst
+alter table public.inspection_items add column if not exists answer_type text not null default 'skala';
+alter table public.inspection_items add column if not exists unit       text;
+alter table public.inspection_items add column if not exists options    text[] default '{}';
+alter table public.inspection_items add column if not exists value_num  numeric;
+alter table public.inspection_items add column if not exists value_text text;
+
+-- Freie Gebaeudekonfiguration
+alter table public.properties add column if not exists rooms_count    integer;
+alter table public.properties add column if not exists corridor_count integer;
+alter table public.properties add column if not exists basement_count integer;
+
 alter table public.templates enable row level security;
 alter table public.template_criteria enable row level security;
 

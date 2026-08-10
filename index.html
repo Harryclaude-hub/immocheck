@@ -782,6 +782,16 @@ const OBJEKTTYPEN = [
   ["sonstiges","Sonstiges"]
 ];
 
+/* Wie eine Frage beantwortet wird */
+const ANTWORTTYPEN = [
+  ["skala",    "Bewertung 1 bis 5",   "Die Emoji-Skala, fließt in die Gesamtnote ein"],
+  ["ja_nein",  "Ja / Nein",           "Einfache Entscheidung, ohne Note"],
+  ["messwert", "Messwert",            "Eine Zahl mit Einheit, zum Beispiel 21,5 °C"],
+  ["auswahl",  "Auswahl",             "Eine Antwort aus einer eigenen Liste"],
+  ["text",     "Freier Text",         "Kurze schriftliche Antwort"]
+];
+const typLabel = t => (ANTWORTTYPEN.find(a=>a[0]===t)||[,t])[1];
+
 /* Gebäudestruktur, Auswahllisten für die Mehrfachauswahl */
 const LEITUNGEN = ["Strom","Gas","Wasser","Kanal","Fernwärme","Öltank","Photovoltaik","Glasfaser","Kabel / TV","Klingel / Gegensprech","Blitzschutz","Notbeleuchtung"];
 const KELLER_INHALT = ["Kellerabteile","Waschküche","Trockenraum","Heizraum","Technikraum","Fahrradraum","Kinderwagenraum","Müllraum","Tiefgarage","Lagerraum","Hausanschlussraum","Sauna"];
@@ -1186,6 +1196,11 @@ function editProperty(id){
         <div class="field"><label>Kellerabteile</label><input name="basement_units" type="number" min="0" value="${f("basement_units")}"></div>
         <div class="field"><label>Dachbodenabteile</label><input name="attic_units" type="number" min="0" value="${f("attic_units")}"></div>
       </div>
+      <div class="grid g3">
+        <div class="field"><label>Zimmer gesamt</label><input name="rooms_count" type="number" min="0" value="${f("rooms_count")}"></div>
+        <div class="field"><label>Gänge / Flure</label><input name="corridor_count" type="number" min="0" value="${f("corridor_count")}"></div>
+        <div class="field"><label>Kellergeschosse</label><input name="basement_count" type="number" min="0" value="${f("basement_count")}"></div>
+      </div>
 
       <div class="row" style="gap:16px;margin-bottom:14px">
         <label class="row xs" style="gap:6px;margin:0"><input type="checkbox" name="has_basement" style="width:auto" ${p?.has_basement?"checked":""}> Keller</label>
@@ -1248,6 +1263,8 @@ async function saveProperty(ev, id){
     elevator_count: num(fd.get("elevator_count")) || 0,
     has_elevator: (num(fd.get("elevator_count")) || 0) > 0,
     basement_units: num(fd.get("basement_units")), attic_units: num(fd.get("attic_units")),
+    rooms_count: num(fd.get("rooms_count")), corridor_count: num(fd.get("corridor_count")),
+    basement_count: num(fd.get("basement_count")),
     utilities: fd.getAll("utilities"), basement_content: fd.getAll("basement_content"),
     ground_content: fd.getAll("ground_content"), attic_content: fd.getAll("attic_content"),
     structure_notes: fd.get("structure_notes")||null,
@@ -1368,7 +1385,7 @@ async function viewProperty(){
           <div class="nr">${c.critical?"❗":"＋"}</div>
           <div class="txt">
             <strong>${esc(c.name)}</strong>
-            <small>${esc(catName(c.category_id))} · ${esc(SCOPE_LABEL[c.scope]||c.scope)}${c.critical?" · kritisch":""}${c.hint?" · "+esc(c.hint):""}</small>
+            <small>${esc(catName(c.category_id))} · ${esc(typLabel(c.answer_type||"skala"))}${c.unit?" ("+esc(c.unit)+")":""} · ${esc(SCOPE_LABEL[c.scope]||c.scope)}${c.critical?" · kritisch":""}</small>
           </div>
           <div class="act">
             <button class="btn ghost sm" title="Bearbeiten" onclick="editPropCriterion('${p.id}','${c.id}')">✎</button>
@@ -1516,6 +1533,22 @@ async function editPropCriterion(propId, critId){
         </select>
         <div class="xs muted" style="margin-top:4px">So passt die Frage nur dort, wo sie sinnvoll ist. Bei einer Einzimmerwohnung nimmst du „Nur Wohnungsbegehung".</div>
       </div>
+
+      <div class="field"><label>Wie soll geantwortet werden? *</label>
+        <select name="answer_type" onchange="typFelder(this.value)">
+          ${ANTWORTTYPEN.map(([v,l,b])=>`<option value="${v}" ${(c.answer_type||"skala")===v?"selected":""}>${l} — ${b}</option>`).join("")}
+        </select>
+      </div>
+      <div id="typ-messwert" class="grid g3" style="display:none">
+        <div class="field"><label>Einheit</label><input name="unit" value="${f("unit")}" placeholder="°C, cm, Lux, bar"></div>
+        <div class="field"><label>Sinnvoll ab</label><input name="min_value" type="number" step="any" value="${f("min_value")}"></div>
+        <div class="field"><label>Sinnvoll bis</label><input name="max_value" type="number" step="any" value="${f("max_value")}"></div>
+      </div>
+      <div id="typ-auswahl" class="field" style="display:none">
+        <label>Antwortmöglichkeiten</label>
+        <input name="options" value="${esc((c.options||[]).join(", "))}" placeholder="z. B. dicht, leicht undicht, defekt">
+        <div class="xs muted" style="margin-top:4px">Mit Komma trennen.</div>
+      </div>
       <label class="row xs" style="gap:6px;margin:0 0 14px"><input type="checkbox" name="critical" style="width:auto" ${c.critical?"checked":""}> Kritischer Punkt, im Protokoll hervorgehoben</label>
       <div class="row">
         <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
@@ -1524,11 +1557,22 @@ async function editPropCriterion(propId, critId){
         <button class="btn" type="submit">Speichern</button>
       </div>
     </form>`);
+  typFelder(c.answer_type || "skala");
+}
+
+/* Blendet die Zusatzfelder ein, die zum gewählten Antworttyp gehören. */
+function typFelder(typ){
+  const m = document.getElementById("typ-messwert");
+  const a = document.getElementById("typ-auswahl");
+  if(m) m.style.display = typ === "messwert" ? "grid" : "none";
+  if(a) a.style.display = typ === "auswahl"  ? "block" : "none";
 }
 
 async function savePropCriterion(ev, propId, critId){
   ev.preventDefault();
   const fd = new FormData(ev.target);
+  const zahl = v => v==="" || v==null ? null : Number(v);
+  const typ = fd.get("answer_type") || "skala";
   const rec = {
     property_id: propId,
     category_id: fd.get("category_id"),
@@ -1536,9 +1580,19 @@ async function savePropCriterion(ev, propId, critId){
     hint: fd.get("hint") || null,
     scope: fd.get("scope") || "beide",
     critical: !!fd.get("critical"),
+    answer_type: typ,
+    unit: typ === "messwert" ? (fd.get("unit") || null) : null,
+    min_value: typ === "messwert" ? zahl(fd.get("min_value")) : null,
+    max_value: typ === "messwert" ? zahl(fd.get("max_value")) : null,
+    options: typ === "auswahl"
+      ? String(fd.get("options")||"").split(",").map(s=>s.trim()).filter(Boolean)
+      : [],
     is_system: false,
     active: true
   };
+  if(typ === "auswahl" && !rec.options.length){
+    toast("Bitte mindestens eine Antwortmöglichkeit angeben.", 4000); return false;
+  }
   if(!critId){ rec.created_by = S.user.id; rec.sort_order = 900; }
   const {error} = critId
     ? await sb.from("criteria").update(rec).eq("id",critId)
@@ -1697,7 +1751,10 @@ async function createInspection(ev, propId){
       category_key: cat.key, category_name: cat.name,
       criterion_name: c.name, hint: c.hint,
       sort_order: cat.sort_order*1000 + c.sort_order,
-      critical: c.critical, presence: "offen"
+      critical: c.critical, presence: "offen",
+      answer_type: c.answer_type || "skala",
+      unit: c.unit || null,
+      options: c.options || []
     };
   }).sort((a,b)=>a.sort_order-b.sort_order);
   for(let i=0;i<items.length;i+=200){
@@ -1912,9 +1969,7 @@ function renderItem(i){
       ${[["vorhanden","✓ Vorhanden / OK"],["nicht_vorhanden","✕ Nicht vorhanden"],["nicht_relevant","– Nicht relevant"]]
         .map(([v,l])=>`<button data-v="${v}" class="${i.presence===v?"on":""}" onclick="setPresence('${i.id}','${v}')">${l}</button>`).join("")}
     </div>
-    <div class="emojis">
-      ${SCALE.map(s=>`<button class="${i.rating===s.v?"on":""}" onclick="setRating('${i.id}',${s.v})" title="${s.l}">${s.e}<span class="lbl">${s.l}</span></button>`).join("")}
-    </div>
+    ${antwortWidget(i)}
     <textarea placeholder="Notiz, Ort, Maßnahme …" onchange="saveItem('${i.id}',{note:this.value})">${esc(i.note||"")}</textarea>
     <div class="crit-extra">
       <button class="chip-toggle ${i.defect?"on":""}" onclick="toggleDefect('${i.id}')">🔧 Mangel</button>
@@ -2035,6 +2090,55 @@ async function setPresence(id, v){
   await saveItem(id, patch);
   refreshItem(id);
 }
+/* Das Antwortfeld richtet sich nach dem Typ der Frage. */
+function antwortWidget(i){
+  const typ = i.answer_type || "skala";
+  if(typ === "skala"){
+    return `<div class="emojis">
+      ${SCALE.map(s=>`<button class="${i.rating===s.v?"on":""}" onclick="setRating('${i.id}',${s.v})" title="${s.l}">${s.e}<span class="lbl">${s.l}</span></button>`).join("")}
+    </div>`;
+  }
+  if(typ === "ja_nein"){
+    return `<div class="pres">
+      ${[["ja","✓ Ja"],["nein","✕ Nein"]].map(([v,l])=>
+        `<button data-v="${v}" class="${i.value_text===v?"on":""}" onclick="setWahl('${i.id}', this.dataset.v)">${l}</button>`).join("")}
+    </div>`;
+  }
+  if(typ === "auswahl"){
+    return `<div class="pres">
+      ${(i.options||[]).map(o=>
+        `<button data-v="${esc(o)}" class="${i.value_text===o?"on":""}" onclick="setWahl('${i.id}', this.dataset.v)">${esc(o)}</button>`).join("")}
+    </div>`;
+  }
+  if(typ === "messwert"){
+    return `<div class="row" style="gap:8px;margin:8px 0">
+      <input type="number" step="any" inputmode="decimal" style="max-width:180px"
+        value="${i.value_num ?? ""}" placeholder="Messwert"
+        onchange="setMesswert('${i.id}', this.value)">
+      ${i.unit?`<span class="badge brand">${esc(i.unit)}</span>`:""}
+    </div>`;
+  }
+  return `<textarea style="margin:8px 0" placeholder="Antwort"
+    onchange="setText('${i.id}', this.value)">${esc(i.value_text||"")}</textarea>`;
+}
+
+async function setWahl(id, v){
+  const it = IS.items.find(x=>x.id===id);
+  const neu = it.value_text === v ? null : v;
+  await saveItem(id, {value_text: neu, presence: neu==null ? "offen" : "vorhanden"});
+  refreshItem(id);
+}
+async function setText(id, v){
+  const t = String(v||"").trim() || null;
+  await saveItem(id, {value_text: t, presence: t ? "vorhanden" : "offen"});
+}
+async function setMesswert(id, v){
+  const n = v==="" || v==null ? null : Number(v);
+  if(n!=null && !isFinite(n)){ toast("Bitte eine Zahl eingeben.", 3000); return; }
+  await saveItem(id, {value_num: n, presence: n==null ? "offen" : "vorhanden"});
+  refreshItem(id);
+}
+
 async function setRating(id, v){
   const it = IS.items.find(x=>x.id===id);
   const nv = it.rating===v ? null : v;
@@ -2400,6 +2504,14 @@ async function reopenInspection(id){
    ========================================================= */
 const PRES_TXT = {vorhanden:"Vorhanden / OK", nicht_vorhanden:"NICHT vorhanden", nicht_relevant:"Nicht relevant", offen:"Offen"};
 const RATE_TXT = {1:"Sehr schlecht",2:"Schlecht",3:"Mittel",4:"Gut",5:"Sehr gut"};
+/* Antwort eines Prüfpunkts als lesbarer Text, unabhängig vom Antworttyp. */
+function antwortText(i){
+  const t = i.answer_type || "skala";
+  if(t === "messwert") return i.value_num!=null ? `${i.value_num}${i.unit?" "+i.unit:""}` : "-";
+  if(t === "ja_nein")  return i.value_text === "ja" ? "Ja" : i.value_text === "nein" ? "Nein" : "-";
+  if(t === "auswahl" || t === "text") return i.value_text || "-";
+  return i.rating!=null ? `${i.rating}/5 ${RATE_TXT[i.rating]}` : "-";
+}
 
 /* =========================================================
    PAPIERBOGEN MASCHINELL AUSLESEN
@@ -2624,10 +2736,18 @@ function zeigeLeseErgebnis(zeilen, probleme){
   const nachNr = {};
   aktiveItems(IS.items).forEach(i => { if(i.__nr) nachNr[i.__nr] = i; });
   const erkannt = zeilen.filter(z => z.status !== "leer");
+  const optionenFuer = it => {
+    const t = it?.answer_type || "skala";
+    if(t === "ja_nein") return [["","– nichts –"],["ja","Ja"],["nein","Nein"],["nv","nicht vorhanden"]];
+    if(t === "auswahl") return [["","– nichts –"]]
+      .concat((it.options||[]).slice(0,5).map((o,k)=>["opt"+k, o]))
+      .concat([["nv","nicht vorhanden"]]);
+    return [["","– nichts –"],["1","1"],["2","2"],["3","3"],["4","4"],["5","5"],["nv","nicht vorhanden"]];
+  };
   const auswahl = z => {
-    const opts = [["","– nichts –"],["1","1"],["2","2"],["3","3"],["4","4"],["5","5"],["nv","nicht vorhanden"]];
+    const opts = optionenFuer(nachNr[z.nr]);
     return `<select data-nr="${z.nr}" class="lese-wahl">
-      ${opts.map(([v,l])=>`<option value="${v}" ${(z.status==="leer"?"":z.wert)===v?"selected":""}>${l}</option>`).join("")}
+      ${opts.map(([v,l])=>`<option value="${esc(v)}" ${(z.status==="leer"?"":z.wert)===v?"selected":""}>${esc(l)}</option>`).join("")}
     </select>`;
   };
   openModal(`
@@ -2666,9 +2786,15 @@ async function uebernehmeLeseErgebnis(){
     if(!wert) continue;
     const it = nachNr[Number(sel.dataset.nr)];
     if(!it) continue;
-    const patch = wert === "nv"
-      ? {presence:"nicht_vorhanden", rating:null}
-      : {rating:Number(wert), presence:"vorhanden"};
+    let patch = null;
+    if(wert === "nv")                 patch = {presence:"nicht_vorhanden", rating:null, value_text:null, value_num:null};
+    else if(/^[1-5]$/.test(wert))     patch = {rating:Number(wert), presence:"vorhanden"};
+    else if(wert === "ja" || wert === "nein") patch = {value_text:wert, presence:"vorhanden"};
+    else if(wert.startsWith("opt")){
+      const o = (it.options||[])[Number(wert.slice(3))];
+      if(o) patch = {value_text:o, presence:"vorhanden"};
+    }
+    if(!patch) continue;
     await saveItem(it.id, patch);
     gesetzt++;
   }
@@ -2736,17 +2862,45 @@ async function makePaperSheet(id){
     });
 
     /* Geometrie mitschreiben, damit ein Foto des Bogens später ausgelesen werden kann */
-    const layout = {version:1, seite:{w:W, h:H}, marken:MARKEN, markeMm:MARK, kaesten:[]};
-    const spalteWert = {2:"1", 3:"2", 4:"3", 5:"4", 6:"5", 7:"nv"};
+    const layout = {version:2, seite:{w:W, h:H}, marken:MARKEN, markeMm:MARK, kaesten:[]};
+    const nachNr = {};
+    aktiv.forEach(it => { nachNr[it.__nr] = it; });
+
+    /* Was bedeuten die sechs Kästchen in dieser Zeile? null heißt: kein Kästchen drucken. */
+    const boxWerte = it => {
+      const t = it.answer_type || "skala";
+      if(t === "skala")   return ["1","2","3","4","5","nv"];
+      if(t === "ja_nein") return ["ja","nein",null,null,null,"nv"];
+      if(t === "auswahl"){
+        const o = (it.options||[]).slice(0,5);
+        return [0,1,2,3,4].map(k => o[k] ? "opt"+k : null).concat(["nv"]);
+      }
+      return [null,null,null,null,null,null];      // Messwert und Text werden geschrieben, nicht angekreuzt
+    };
+    /* Die Zuordnung steht im Klartext neben der Frage, damit die Kästchen leer bleiben
+       und das maschinelle Auslesen nicht durch gedruckte Zeichen gestört wird. */
+    const frageText = it => {
+      const t = it.answer_type || "skala";
+      let s = it.criterion_name + (it.critical ? "  (!)" : "");
+      if(t === "ja_nein")  s += "   [1 = Ja, 2 = Nein]";
+      if(t === "auswahl")  s += "   [" + (it.options||[]).slice(0,5).map((o,k)=>`${k+1} = ${o}`).join(", ") + "]";
+      if(t === "messwert") s += `   [Messwert${it.unit?" in "+it.unit:""} rechts eintragen]`;
+      if(t === "text")     s += "   [Antwort rechts eintragen]";
+      return s;
+    };
 
     bereiche.forEach(b => {
       doc.autoTable({
         didDrawCell: d => {
           if(d.section !== "body") return;
-          const wert = spalteWert[d.column.index];
+          const idx = d.column.index - 2;
+          if(idx < 0 || idx > 5) return;
+          const it = nachNr[Number(d.row.raw[0])];
+          if(!it) return;
+          const wert = boxWerte(it)[idx];
           if(!wert) return;
           layout.kaesten.push({
-            nr: Number(d.row.raw[0]), wert,
+            nr: it.__nr, wert,
             seite: doc.internal.getCurrentPageInfo().pageNumber,
             x: +d.cell.x.toFixed(2), y: +d.cell.y.toFixed(2),
             w: +d.cell.width.toFixed(2), h: +d.cell.height.toFixed(2)
@@ -2755,11 +2909,7 @@ async function makePaperSheet(id){
         startY: y,
         head: [[{content:b.name, colSpan:9, styles:{halign:"left", fillColor:[219,234,254], textColor:[29,78,216], fontStyle:"bold", fontSize:9}}],
                ["Nr", "Prüfpunkt", "1","2","3","4","5","n.v.","Notiz"]],
-        body: b.items.map(it => [
-          String(it.__nr),
-          it.criterion_name + (it.critical ? "  (!)" : ""),
-          "","","","","","",""
-        ]),
+        body: b.items.map(it => [String(it.__nr), frageText(it), "","","","","","",""]),
         theme:"grid",
         styles:{fontSize:8, cellPadding:{top:2.1,bottom:2.1,left:1.5,right:1.5}, textColor:[30,41,59], lineColor:[203,213,225], lineWidth:0.2},
         headStyles:{fillColor:[241,245,249], textColor:[71,85,105], fontSize:7.5, halign:"center"},
@@ -2963,7 +3113,7 @@ async function makePdf(id){
         body: cItems.map(i=>[
           i.criterion_name + (i.critical ? "  [sicherheitsrelevant]" : ""),
           PRES_TXT[i.presence||"offen"],
-          i.rating!=null ? `${i.rating}/5 ${RATE_TXT[i.rating]}` : "-",
+          antwortText(i),
           i.note || ""
         ]).concat(versteckt.map(i=>[
           i.criterion_name,
