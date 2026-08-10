@@ -2372,7 +2372,7 @@ async function uploadScan(input){
   try{
     const neu = [];
     for(const file of dateien){
-      const blob = await resizeImage(file, 2000, .8);   // höher als Fotos, damit Handschrift lesbar bleibt
+      const blob = await resizeImage(file, 2600, .85);  // höher als Fotos, damit Ziffern und Handschrift lesbar bleiben
       const path = `scans/${IS.insp.id}/${Date.now()}-${Math.random().toString(36).slice(2,7)}.jpg`;
       const {error} = await sb.storage.from("check-fotos").upload(path, blob, {contentType:"image/jpeg", upsert:true});
       if(error) throw error;
@@ -3392,7 +3392,9 @@ function leseZiffern(maske, w, h, H, layout, seite){
 
 /* Liest eine Bogenseite aus einem Foto. Gibt je Zeilennummer den erkannten Wert zurück. */
 async function leseBogenSeite(url, layout, seite){
-  const canvas = await bildInCanvas(url, 1600);
+  /* Hoch angesetzt, weil die Ziffernkästchen sonst nur eine Handvoll Pixel breit sind
+     und die Zeichenerkennung daran scheitert. */
+  const canvas = await bildInCanvas(url, 2400);
   const {maske, w, h} = dunkelMaske(canvas);
   const I = integralBild(maske, w, h);
 
@@ -3662,8 +3664,8 @@ async function makePaperSheet(id){
           if(d.column.index === 8){
             const mw = nachNr[Number(d.row.raw[0])];
             if(mw && mw.answer_type === "messwert"){
-              const bw = Math.min(5.2, (d.cell.width - 2) / ZIFFERN_PRO_WERT);
-              const bh = Math.min(d.cell.height - 1.4, 6.2);
+              const bw = Math.min(8, (d.cell.width - 1.5) / ZIFFERN_PRO_WERT);
+              const bh = Math.min(d.cell.height - 1.2, 7.5);
               const x0 = d.cell.x + 1;
               const y0 = d.cell.y + (d.cell.height - bh)/2;
               doc.setDrawColor(148,163,184); doc.setLineWidth(0.25);
