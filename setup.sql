@@ -598,6 +598,13 @@ alter table public.inspection_items add column if not exists options    text[] d
 alter table public.inspection_items add column if not exists value_num  numeric;
 alter table public.inspection_items add column if not exists value_text text;
 
+-- Grenzwerte mit in die Begehung kopieren, damit die Auswertung sie kennt
+alter table public.inspection_items add column if not exists min_value numeric;
+alter table public.inspection_items add column if not exists max_value numeric;
+
+-- Ergebnis der automatischen Auswertung
+alter table public.inspections add column if not exists analysis jsonb;
+
 -- Freie Gebaeudekonfiguration
 alter table public.properties add column if not exists rooms_count    integer;
 alter table public.properties add column if not exists corridor_count integer;

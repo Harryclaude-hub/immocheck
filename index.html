@@ -1649,8 +1649,10 @@ async function startInspection(propId, unitId){
   const units = (await sb.from("units").select("*").eq("property_id",propId).order("label")).data || [];
   const today = new Date().toISOString().slice(0,10);
 
-  const passend = S.templates.filter(t => (t.object_types||[]).includes(p.object_type));
-  const andere  = S.templates.filter(t => !(t.object_types||[]).includes(p.object_type));
+  /* Objektgebundene Kataloge nur bei ihrer eigenen Immobilie anbieten */
+  const verfuegbar = S.templates.filter(t => !t.property_id || t.property_id === propId);
+  const passend = verfuegbar.filter(t => t.property_id === propId || (t.object_types||[]).includes(p.object_type));
+  const andere  = verfuegbar.filter(t => !passend.includes(t));
   const vorwahl = (unitId && S.templates.find(t => t.name === "Wohnung")) || passend[0] || S.templates[0];
   if(!vorwahl){ toast("Es ist keine Vorlage vorhanden. Lege zuerst unter Vorlagen einen Fragenkatalog an.", 5000); return; }
 
@@ -1754,7 +1756,9 @@ async function createInspection(ev, propId){
       critical: c.critical, presence: "offen",
       answer_type: c.answer_type || "skala",
       unit: c.unit || null,
-      options: c.options || []
+      options: c.options || [],
+      min_value: c.min_value ?? null,
+      max_value: c.max_value ?? null
     };
   }).sort((a,b)=>a.sort_order-b.sort_order);
   for(let i=0;i<items.length;i+=200){
@@ -2382,6 +2386,128 @@ async function finishInspection(){
 }
 
 /* =========================================================
+   AUSWERTUNG
+   Regelbasiert. Jede Aussage lässt sich auf konkrete Prüfpunkte zurückführen,
+   es wird nichts geschätzt und nichts geraten.
+   ========================================================= */
+function analysiere(insp, prop, items, historie){
+  const aktiv = aktiveItems(items);
+  const st = itemStats(aktiv);
+  const befunde = [];
+  const nenne = liste => liste.slice(0,6).map(i=>i.criterion_name)
+    .concat(liste.length>6 ? [`und ${liste.length-6} weitere`] : []);
+
+  /* 1. Sicherheitsrelevantes */
+  const sicherheit = aktiv.filter(i => i.critical &&
+    (i.presence === "nicht_vorhanden" || (i.rating!=null && i.rating<=2) || i.priority==="kritisch"));
+  if(sicherheit.length) befunde.push({stufe:"kritisch",
+    titel:`${sicherheit.length} sicherheitsrelevante${sicherheit.length===1?"r":""} Punkt${sicherheit.length===1?"":"e"} nicht in Ordnung`,
+    text:"Diese Punkte betreffen die Sicherheit und sollten vor allen anderen erledigt werden.",
+    punkte:nenne(sicherheit)});
+
+  /* 2. Messwerte außerhalb des sinnvollen Bereichs */
+  const ausReisser = aktiv.filter(i => i.answer_type==="messwert" && i.value_num!=null &&
+    ((i.min_value!=null && Number(i.value_num) < Number(i.min_value)) ||
+     (i.max_value!=null && Number(i.value_num) > Number(i.max_value))));
+  if(ausReisser.length) befunde.push({stufe:"warnung",
+    titel:`${ausReisser.length} Messwert${ausReisser.length===1?"":"e"} außerhalb des Bereichs`,
+    text:"Gemessen wurde " + ausReisser.slice(0,4).map(i =>
+      `${i.criterion_name}: ${i.value_num}${i.unit?" "+i.unit:""} (erwartet ${i.min_value??"–"} bis ${i.max_value??"–"})`).join("; ") + ".",
+    punkte:nenne(ausReisser)});
+
+  /* 3. Schlechte Bewertungen ohne Sicherheitsbezug */
+  const schlecht = aktiv.filter(i => !i.critical && i.rating!=null && i.rating<=2);
+  if(schlecht.length) befunde.push({stufe:"warnung",
+    titel:`${schlecht.length} Punkt${schlecht.length===1?"":"e"} schlecht bewertet`,
+    text:"Mit 1 oder 2 bewertet, hier besteht Handlungsbedarf ohne unmittelbare Gefahr.",
+    punkte:nenne(schlecht)});
+
+  /* 4. Fristen überschritten */
+  const heute = new Date().toISOString().slice(0,10);
+  const ueberfaellig = aktiv.filter(i => i.due_date && i.due_date < heute && i.defect);
+  if(ueberfaellig.length) befunde.push({stufe:"warnung",
+    titel:`${ueberfaellig.length} Frist${ueberfaellig.length===1?"":"en"} überschritten`,
+    text:"Für diese Mängel ist die eingetragene Frist bereits verstrichen.",
+    punkte:nenne(ueberfaellig)});
+
+  /* 5. Unvollständigkeit, das schränkt die Aussagekraft ein */
+  const offen = aktiv.filter(i => !i.presence || i.presence==="offen");
+  const versteckt = items.filter(i=>i.hidden).length;
+  const ausgeschlossen = Object.keys(insp.skipped_categories||IS.skipped||{}).length;
+  if(offen.length || versteckt || ausgeschlossen){
+    const teile = [];
+    if(offen.length)      teile.push(`${offen.length} Punkte unbearbeitet`);
+    if(versteckt)         teile.push(`${versteckt} ausgeblendet`);
+    if(ausgeschlossen)    teile.push(`${ausgeschlossen} Bereiche ausgeschlossen`);
+    befunde.push({stufe:"hinweis", titel:"Die Begehung ist nicht vollständig",
+      text:teile.join(", ") + ". Das Ergebnis bildet nur den geprüften Teil ab.",
+      punkte:nenne(offen)});
+  }
+
+  /* 6. Entwicklung gegenüber der letzten abgeschlossenen Begehung */
+  const frueher = (historie||[])
+    .filter(h => h.id !== insp.id && h.status==="abgeschlossen" && h.score!=null)
+    .sort((a,b) => (b.inspection_date||"").localeCompare(a.inspection_date||""));
+  let trend = null;
+  if(frueher.length && st.score!=null){
+    const vor = Number(frueher[0].score);
+    const diff = st.score - vor;
+    trend = {vorher:vor, jetzt:+st.score.toFixed(2), diff:+diff.toFixed(2), datum:frueher[0].inspection_date};
+    if(diff <= -0.5) befunde.push({stufe:"warnung", titel:"Der Zustand hat sich verschlechtert",
+      text:`Gegenüber der Begehung vom ${fmtDate(frueher[0].inspection_date)} ist die Note von ${vor.toFixed(1)} auf ${st.score.toFixed(1)} gefallen.`, punkte:[]});
+    else if(diff >= 0.5) befunde.push({stufe:"gut", titel:"Der Zustand hat sich verbessert",
+      text:`Gegenüber der Begehung vom ${fmtDate(frueher[0].inspection_date)} ist die Note von ${vor.toFixed(1)} auf ${st.score.toFixed(1)} gestiegen.`, punkte:[]});
+  }
+
+  /* Gesamturteil */
+  let ampel, urteil, empfehlung;
+  if(sicherheit.length){
+    ampel = "rot";
+    urteil = "Handlungsbedarf, sicherheitsrelevante Mängel vorhanden";
+    empfehlung = `Zuerst die ${sicherheit.length} sicherheitsrelevanten Punkte beheben, danach erneut prüfen.`;
+  } else if(ausReisser.length || schlecht.length >= 3 || ueberfaellig.length || (st.score!=null && st.score < 3)){
+    ampel = "gelb";
+    urteil = "Mängel vorhanden, keine unmittelbare Gefahr";
+    empfehlung = "Die aufgeführten Punkte einplanen und mit Fristen versehen.";
+  } else if(st.score!=null && st.score >= 4 && !schlecht.length){
+    ampel = "gruen";
+    urteil = "Objekt in gutem Zustand";
+    empfehlung = "Keine dringenden Maßnahmen. Nächste Begehung wie üblich.";
+  } else {
+    ampel = "gelb";
+    urteil = "Zustand durchschnittlich";
+    empfehlung = "Einzelne Punkte beobachten und bei der nächsten Begehung erneut ansehen.";
+  }
+  if(offen.length > aktiv.length*0.3){
+    empfehlung += " Achtung: Ein großer Teil wurde nicht bearbeitet, das Urteil ist entsprechend unsicher.";
+  }
+
+  return {ampel, urteil, empfehlung, trend, befunde,
+    zahlen:{gesamt:aktiv.length, bearbeitet:st.answered.length, note:st.score!=null?+st.score.toFixed(2):null,
+            maengel:st.defects.length, kritisch:sicherheit.length, messwertAusreisser:ausReisser.length}};
+}
+
+const AMPEL_FARBE = {rot:[220,38,38], gelb:[234,179,8], gruen:[22,163,74]};
+const AMPEL_TEXT  = {rot:"bad", gelb:"warn", gruen:"ok"};
+
+function analyseKarte(a){
+  const stufeBadge = {kritisch:"bad", warnung:"warn", hinweis:"", gut:"ok"};
+  return `<div class="card">
+    <div class="row between"><h3 style="margin:0">Auswertung</h3>
+      <span class="badge ${AMPEL_TEXT[a.ampel]}">${esc(a.urteil)}</span></div>
+    <div class="small" style="margin:10px 0 12px"><strong>Empfehlung:</strong> ${esc(a.empfehlung)}</div>
+    ${a.trend?`<div class="xs muted" style="margin-bottom:10px">Vorher ${a.trend.vorher.toFixed(1)} am ${fmtDate(a.trend.datum)}, jetzt ${a.trend.jetzt.toFixed(1)} (${a.trend.diff>0?"+":""}${a.trend.diff.toFixed(1)})</div>`:""}
+    ${a.befunde.length ? a.befunde.map(b=>`
+      <div class="substep">
+        <h4>${esc(b.titel)} ${b.stufe==="kritisch"?'<span class="badge bad xs">kritisch</span>':b.stufe==="warnung"?'<span class="badge warn xs">Warnung</span>':b.stufe==="gut"?'<span class="badge ok xs">gut</span>':'<span class="badge xs">Hinweis</span>'}</h4>
+        <div class="small">${esc(b.text)}</div>
+        ${b.punkte.length?`<div class="xs muted" style="margin-top:5px">${b.punkte.map(esc).join(" · ")}</div>`:""}
+      </div>`).join("")
+      : `<div class="small muted">Keine Auffälligkeiten gefunden.</div>`}
+  </div>`;
+}
+
+/* =========================================================
    ERGEBNIS EINER BEGEHUNG
    ========================================================= */
 async function viewInspectionResult(){
@@ -2391,6 +2517,11 @@ async function viewInspectionResult(){
   const {prop, items} = IS;
   const st = itemStats(aktiveItems(items));
   const cats = [...new Set(items.map(i=>i.category_key))];
+  const historie = (await sb.from("inspections").select("id,inspection_date,status,score")
+    .eq("property_id", prop.id)).data || [];
+  const analyse = analysiere(insp, prop, items, historie);
+  IS.analyse = analyse;
+  sb.from("inspections").update({analysis: analyse}).eq("id", insp.id);   // für die Historie festhalten
   const maengel = aktiveItems(items).filter(i=>i.defect || i.presence==="nicht_vorhanden" || (i.rating!=null && i.rating<=2))
     .sort((a,b)=> (["kritisch","hoch","mittel","niedrig","keine"].indexOf(a.priority)) - (["kritisch","hoch","mittel","niedrig","keine"].indexOf(b.priority)));
 
@@ -2421,6 +2552,8 @@ async function viewInspectionResult(){
       ${insp.general_notes?`<hr><div class="xs muted">Allgemeine Notizen</div><div class="small">${esc(insp.general_notes).replace(/\n/g,"<br>")}</div>`:""}
     </div>
 
+    ${analyseKarte(analyse)}
+
     ${maengel.length?`<div class="card">
       <h3>Maßnahmen und Auffälligkeiten (${maengel.length})</h3>
       <table class="t"><thead><tr><th>Prüfpunkt</th><th>Kategorie</th><th>Status</th><th>Bewertung</th><th>Priorität</th><th>Frist</th></tr></thead><tbody>
@@ -2428,7 +2561,7 @@ async function viewInspectionResult(){
         <td><strong>${esc(i.criterion_name)}</strong>${i.note?`<div class="xs muted">${esc(i.note)}</div>`:""}</td>
         <td class="xs">${esc(i.category_name)}</td>
         <td>${presBadge(i.presence)}</td>
-        <td>${i.rating!=null?`${scaleOf(i.rating).e} ${i.rating}/5`:"–"}</td>
+        <td>${(i.answer_type||"skala")==="skala" ? (i.rating!=null?`${scaleOf(i.rating).e} ${i.rating}/5`:"–") : esc(antwortText(i))}</td>
         <td>${prioBadge(i.priority)}</td>
         <td class="xs mono">${i.due_date?fmtDate(i.due_date):"–"}</td>
       </tr>`).join("")}
@@ -3027,6 +3160,48 @@ async function makePdf(id){
       doc.text(lines, M, y); y += lines.length*4.4 + 4;
     }
 
+    /* Automatische Auswertung */
+    const histo = (await sb.from("inspections").select("id,inspection_date,status,score")
+      .eq("property_id", prop.id)).data || [];
+    const a = analysiere(insp, prop, items, histo);
+    if(y > 215){ doc.addPage(); y = 18; }
+    doc.setFillColor(...AMPEL_FARBE[a.ampel]);
+    doc.roundedRect(M, y, W-2*M, 7, 2, 2, "F");
+    doc.setTextColor(255); doc.setFont("helvetica","bold"); doc.setFontSize(9.5);
+    doc.text("Auswertung: " + a.urteil, M+3, y+4.8);
+    doc.setTextColor(30,41,59); y += 11;
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("Empfehlung", M, y); y += 4;
+    doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    let zeilen = doc.splitTextToSize(a.empfehlung, W-2*M);
+    doc.text(zeilen, M, y); y += zeilen.length*4.4 + 3;
+    if(a.trend){
+      doc.setFontSize(8.5); doc.setTextColor(100,116,139);
+      doc.text(`Vorher ${a.trend.vorher.toFixed(1)} am ${fmtDate(a.trend.datum)}, jetzt ${a.trend.jetzt.toFixed(1)} (${a.trend.diff>0?"+":""}${a.trend.diff.toFixed(1)})`, M, y);
+      doc.setTextColor(30,41,59); y += 5;
+    }
+    if(a.befunde.length){
+      doc.autoTable({
+        startY: y,
+        head: [["Stufe","Befund","Betroffene Punkte"]],
+        body: a.befunde.map(b => [
+          b.stufe === "kritisch" ? "Kritisch" : b.stufe === "warnung" ? "Warnung" : b.stufe === "gut" ? "Gut" : "Hinweis",
+          b.titel + "\n" + b.text,
+          b.punkte.join(", ") || "-"
+        ]),
+        styles:{fontSize:8, cellPadding:1.7, overflow:"linebreak"},
+        headStyles:{fillColor:[226,232,240], textColor:[51,65,85], fontSize:8},
+        columnStyles:{0:{cellWidth:18, fontStyle:"bold"}, 1:{cellWidth:88}, 2:{cellWidth:"auto", textColor:[100,116,139]}},
+        margin:{left:M, right:M},
+        didParseCell: d => {
+          if(d.section==="body" && d.column.index===0){
+            const s = a.befunde[d.row.index].stufe;
+            d.cell.styles.textColor = s==="kritisch" ? [185,28,28] : s==="warnung" ? [180,83,9] : s==="gut" ? [21,128,61] : [100,116,139];
+          }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
     /* Vom Papierbogen übernommene Anmerkungen */
     if(insp.scan_summary){
       if(y > 240){ doc.addPage(); y = 18; }
@@ -3257,6 +3432,13 @@ function tplNeu(basisId){
           <input type="checkbox" name="ot" value="${k}" style="width:auto" ${basis&&(basis.object_types||[]).includes(k)?"checked":""}> ${l}
         </label>`).join("")}
       </div>
+      <div class="field"><label>Nur für eine bestimmte Immobilie</label>
+        <select name="property_id">
+          <option value="">Für alle Objekte verfügbar</option>
+          ${(S.properties||[]).map(p=>`<option value="${p.id}" ${basis&&basis.property_id===p.id?"selected":""}>${esc(p.name)}</option>`).join("")}
+        </select>
+        <div class="xs muted" style="margin-top:4px">Gebunden erscheint der Katalog nur bei dieser Immobilie, sonst nirgends.</div>
+      </div>
       <div class="row">
         <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
         <div class="spacer"></div>
@@ -3274,6 +3456,7 @@ async function tplSpeichern(ev, id, basisId){
     description: fd.get("description") || null,
     icon: fd.get("icon") || "📋",
     object_types: fd.getAll("ot"),
+    property_id: fd.get("property_id") || null,
     sort_order: Number(fd.get("sort_order")) || 200
   };
   if(id){
