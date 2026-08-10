@@ -2442,7 +2442,10 @@ function naechsterTermin(pl){
     else if(pl.freq === "monate") d.setMonth(d.getMonth() + n);
     else                          d.setFullYear(d.getFullYear() + n);
   }
-  return d.toISOString().slice(0,10);
+  /* Bewusst örtlich formatieren. Über toISOString wäre der Termin je nach
+     Zeitzone einen Tag zu früh, weil dabei auf Weltzeit umgerechnet wird. */
+  const p2 = v => String(v).padStart(2,"0");
+  return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
 }
 
 function icsEscape(s){
