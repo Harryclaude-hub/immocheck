@@ -785,6 +785,87 @@ const OBJEKTTYPEN = [
   ["sonstiges","Sonstiges"]
 ];
 
+/* =========================================================
+   RECHTLICHES NACHSCHLAGEWERK
+   Bewusst nur Verweise auf die amtliche Quelle, kein abgeschriebener
+   Gesetzestext. Verbindlich ist immer die Fassung im RIS bzw. bei
+   gesetze-im-internet.de.
+   ========================================================= */
+const DE = p => `https://www.gesetze-im-internet.de/${p}`;
+const RIS = "https://www.ris.bka.gv.at/";
+
+const RECHT = [
+  {thema:"Erhaltungspflicht des Vermieters", kat:"Allgemein", land:"AT",
+   quelle:"MRG § 3, ABGB § 1096", link:RIS,
+   hinweis:"Regelt, welche Erhaltungsarbeiten der Vermieter schuldet und wann der Mieter Anspruch auf Behebung hat. Grundlage, um Mängel aus einer Begehung geltend zu machen."},
+  {thema:"Erhaltungspflicht des Vermieters", kat:"Allgemein", land:"DE",
+   quelle:"BGB § 535 Abs. 1", link:DE("bgb/__535.html"),
+   hinweis:"Der Vermieter hat die Mietsache in vertragsgemäßem Zustand zu erhalten. Bezugspunkt für dokumentierte Mängel."},
+  {thema:"Mangel und Mietminderung", kat:"Allgemein", land:"DE",
+   quelle:"BGB § 536", link:DE("bgb/__536.html"),
+   hinweis:"Was als Mangel gilt und wann die Miete gemindert werden kann. Eine dokumentierte Begehung mit Fotos ist hier ein starkes Beweismittel."},
+  {thema:"Haftung für Bauwerke, Verkehrssicherung", kat:"Allgemein", land:"AT",
+   quelle:"ABGB § 1319", link:RIS,
+   hinweis:"Haftung des Besitzers eines Bauwerks für Schäden durch mangelhafte Beschaffenheit. Regelmäßige dokumentierte Kontrolle entlastet."},
+  {thema:"Haftung, Verkehrssicherungspflicht", kat:"Allgemein", land:"DE",
+   quelle:"BGB §§ 823, 836", link:DE("bgb/__836.html"),
+   hinweis:"Haftung bei Einsturz oder Ablösung von Gebäudeteilen. Nachweisbare Kontrollen sind der zentrale Entlastungsbeweis."},
+  {thema:"Rauchwarnmelder", kat:"Brandschutz", land:"AT",
+   quelle:"Landesbauordnungen und OIB-Richtlinie 2", link:RIS,
+   hinweis:"Die Pflicht ist Landessache und je Bundesland unterschiedlich geregelt. Für das jeweilige Bundesland prüfen."},
+  {thema:"Rauchwarnmelder", kat:"Brandschutz", land:"DE",
+   quelle:"Landesbauordnungen, Wartung nach DIN 14676", link:DE(""),
+   hinweis:"Einbau- und Wartungspflicht ist Ländersache. Die Bauordnung des Bundeslandes ist maßgeblich."},
+  {thema:"Elektrische Anlagen, wiederkehrende Prüfung", kat:"Elektrik", land:"AT",
+   quelle:"Elektrotechnikgesetz, ÖVE/ÖNORM E 8001", link:RIS,
+   hinweis:"Prüffristen für ortsfeste Anlagen. Für vermietete Objekte besonders relevant."},
+  {thema:"Elektrische Anlagen, Prüfpflicht", kat:"Elektrik", land:"DE",
+   quelle:"BetrSichV, DGUV V3, DIN VDE 0100", link:DE("betrsichv_2015/"),
+   hinweis:"Prüfung ortsfester Anlagen und Betriebsmittel durch eine Elektrofachkraft."},
+  {thema:"Aufzugsanlagen, Prüfung", kat:"Aufzug", land:"AT",
+   quelle:"Aufzüge-Sicherheitsverordnung (ASV)", link:RIS,
+   hinweis:"Wiederkehrende Überprüfung und Abnahme von Aufzugsanlagen."},
+  {thema:"Aufzugsanlagen, Prüfung", kat:"Aufzug", land:"DE",
+   quelle:"BetrSichV, TRBS 3121", link:DE("betrsichv_2015/"),
+   hinweis:"Prüfung durch eine zugelassene Überwachungsstelle, Notrufsystem verpflichtend."},
+  {thema:"Trinkwasser, Legionellenprüfung", kat:"Sanitär", land:"AT",
+   quelle:"Trinkwasserverordnung (TWV)", link:RIS,
+   hinweis:"Untersuchungspflichten für Trinkwasser aus Großanlagen zur Warmwasserbereitung."},
+  {thema:"Trinkwasser, Legionellenprüfung", kat:"Sanitär", land:"DE",
+   quelle:"TrinkwV", link:DE(""),
+   hinweis:"Untersuchungspflicht für Großanlagen zur Trinkwassererwärmung in vermieteten Gebäuden."},
+  {thema:"Feuerungsanlagen, Überprüfung", kat:"Heizung", land:"AT",
+   quelle:"Heizungsanlagenverordnungen der Länder, Kehrordnung", link:RIS,
+   hinweis:"Wiederkehrende Überprüfung und Kehrung, Zuständigkeit liegt bei den Ländern."},
+  {thema:"Feuerungsanlagen, Überprüfung", kat:"Heizung", land:"DE",
+   quelle:"1. BImSchV, Kehr- und Überprüfungsordnung", link:DE(""),
+   hinweis:"Messung und Überprüfung durch den Schornsteinfeger, Fristen je Anlagentyp."},
+  {thema:"Energieausweis", kat:"Allgemein", land:"AT",
+   quelle:"Energieausweis-Vorlage-Gesetz (EAVG)", link:RIS,
+   hinweis:"Vorlage- und Aushändigungspflicht bei Verkauf und Vermietung."},
+  {thema:"Energieausweis", kat:"Allgemein", land:"DE",
+   quelle:"GEG § 80 ff.", link:DE("geg/"),
+   hinweis:"Pflicht zur Vorlage bei Verkauf und Vermietung, Angaben in Immobilienanzeigen."},
+  {thema:"Spielplätze, Sicherheit", kat:"Außenanlagen", land:"AT",
+   quelle:"ÖNORM EN 1176", link:RIS,
+   hinweis:"Sicherheitstechnische Anforderungen und wiederkehrende Kontrolle von Spielplatzgeräten."},
+  {thema:"Spielplätze, Sicherheit", kat:"Außenanlagen", land:"DE",
+   quelle:"DIN EN 1176", link:DE(""),
+   hinweis:"Regelmäßige Sicht-, Funktions- und Hauptkontrolle, Dokumentation empfohlen."},
+  {thema:"Schimmel und Feuchtigkeit", kat:"Bauschäden", land:"AT",
+   quelle:"ABGB § 1096, MRG § 3", link:RIS,
+   hinweis:"Ob ein Mangel vorliegt, hängt von der Ursache ab. Fotos mit Datum und Raumangabe sind hier entscheidend."},
+  {thema:"Schimmel und Feuchtigkeit", kat:"Bauschäden", land:"DE",
+   quelle:"BGB § 536", link:DE("bgb/__536.html"),
+   hinweis:"Streit dreht sich meist um die Ursache, Baumangel oder Nutzungsverhalten. Lückenlose Dokumentation ist der Kern."},
+  {thema:"Blitzschutz", kat:"Elektrik", land:"AT",
+   quelle:"ÖVE/ÖNORM E 8049", link:RIS,
+   hinweis:"Anforderungen an Blitzschutzanlagen und deren Überprüfung."},
+  {thema:"Blitzschutz", kat:"Elektrik", land:"DE",
+   quelle:"DIN EN 62305", link:DE(""),
+   hinweis:"Planung, Errichtung und Prüfung von Blitzschutzsystemen."}
+];
+
 /* Wie eine Frage beantwortet wird */
 const ANTWORTTYPEN = [
   ["skala",    "Bewertung 1 bis 5",   "Die Emoji-Skala, fließt in die Gesamtnote ein"],
@@ -993,6 +1074,8 @@ function renderTabs(){
   const tabs = [
     ["dashboard","Übersicht"],
     ["properties","Immobilien"],
+    ["assistent","Assistent"],
+    ["recht","Recht"],
     ["templates","Vorlagen"],
     ["catalog","Prüfkatalog"]
   ];
@@ -1040,12 +1123,240 @@ function go(view, params={}){
     property: viewProperty,
     inspection: viewInspection,
     inspectionResult: viewInspectionResult,
+    assistent: viewAssistent,
+    recht: viewRecht,
     templates: viewTemplates,
     catalog: viewCatalog,
     team: viewTeam,
     profil: viewProfil
   };
   (R[view] || viewDashboard)();
+}
+
+/* =========================================================
+   RECHT, NACHSCHLAGEWERK
+   ========================================================= */
+function viewRecht(){
+  const suche = (S.params.q || "").toLowerCase();
+  const land  = S.params.land || "alle";
+  const treffer = RECHT.filter(r =>
+    (land === "alle" || r.land === land) &&
+    (!suche || [r.thema, r.kat, r.quelle, r.hinweis].join(" ").toLowerCase().includes(suche)));
+  const kats = [...new Set(treffer.map(r=>r.kat))];
+
+  $("#view").innerHTML = `
+    <h1>Recht, Nachschlagewerk</h1>
+    <div class="card" style="border-left:4px solid var(--accent)">
+      <strong>Bitte lies das einmal.</strong>
+      <div class="small" style="margin-top:6px">
+        Diese Sammlung nennt dir, <em>wo</em> etwas geregelt ist. Sie enthält bewusst keinen abgeschriebenen
+        Gesetzestext, weil nur die amtliche Fassung verbindlich ist. Verbindlich sind das
+        <a href="${RIS}" target="_blank" rel="noopener">RIS</a> für Österreich und
+        <a href="https://www.gesetze-im-internet.de/" target="_blank" rel="noopener">gesetze-im-internet.de</a> für Deutschland.
+        Vieles ist außerdem Landessache und je Bundesland verschieden. Das hier ersetzt keine Rechtsberatung.
+      </div>
+    </div>
+
+    <div class="card tight">
+      <div class="row">
+        <input id="recht-suche" placeholder="Suche nach Thema, Gesetz oder Stichwort" value="${esc(S.params.q||"")}"
+          oninput="go('recht',{q:this.value,land:'${land}'})" style="flex:1;min-width:200px">
+        <div class="row" style="gap:4px">
+          ${[["alle","Alle"],["AT","Österreich"],["DE","Deutschland"]].map(([k,l])=>
+            `<button class="btn ${land===k?"":"sec"} sm" onclick="go('recht',{q:document.getElementById('recht-suche').value,land:'${k}'})">${l}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+
+    ${treffer.length ? kats.map(k=>`
+      <div class="card">
+        <h3>${esc(k)}</h3>
+        ${treffer.filter(r=>r.kat===k).map(r=>`
+          <div class="substep">
+            <h4>${esc(r.thema)} <span class="badge ${r.land==="AT"?"brand":"info"} xs">${r.land==="AT"?"Österreich":"Deutschland"}</span></h4>
+            <div class="small"><strong>${esc(r.quelle)}</strong></div>
+            <div class="small muted" style="margin-top:3px">${esc(r.hinweis)}</div>
+            <a class="btn sec sm" style="margin-top:7px" href="${esc(r.link||RIS)}" target="_blank" rel="noopener">Amtliche Quelle öffnen</a>
+          </div>`).join("")}
+      </div>`).join("")
+      : `<div class="empty"><div class="big">📚</div>Nichts gefunden. Versuch ein anderes Stichwort.</div>`}
+  `;
+  const f = el("recht-suche");
+  if(f){ f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+}
+
+/* =========================================================
+   ASSISTENT
+   Beantwortet aus den erfassten Daten, nicht aus dem Bauch.
+   ========================================================= */
+function assistentAntwort(frage, obj){
+  const f = frage.toLowerCase();
+  const hat = (...w) => w.some(x => f.includes(x));
+
+  if(!obj && hat("wert","zustand","mangel","mängel","begehung","foto","termin")){
+    return {text:"Dafür brauche ich ein Objekt. Schreib ein @ und wähle deine Immobilie aus, dann beantworte ich es anhand der echten Daten."};
+  }
+  if(hat("recht","gesetz","paragraf","paragraph","vorschrift","pflicht")){
+    const stichwort = f.replace(/[^a-zäöüß ]/g," ").split(/\s+/).filter(w=>w.length>4);
+    const gefunden = RECHT.filter(r => stichwort.some(s =>
+      (r.thema+" "+r.kat+" "+r.hinweis).toLowerCase().includes(s))).slice(0,4);
+    return {text: gefunden.length
+        ? "Dazu findest du im Nachschlagewerk:"
+        : "Ich habe dazu keinen passenden Eintrag. Schau im Nachschlagewerk unter Recht, dort kannst du frei suchen.",
+      recht: gefunden};
+  }
+  if(!obj) return {text:"Schreib ein @ und wähle eine Immobilie, dann kann ich dir zu Zustand, Mängeln, Fotos, Terminen und Wert etwas sagen. Für Gesetze frag einfach nach dem Thema, zum Beispiel „Rauchmelder Pflicht\"."};
+
+  const a = obj.analyse;
+  if(hat("wert","bewert","schätz","preis","verkauf")){
+    return {text:
+      `Einen Verkehrswert kann ich dir nicht ausrechnen, dafür fehlen die Marktdaten, also Vergleichspreise, `+
+      `Bodenrichtwert und Lage. Was ich dir aus den Daten gebe, ist der Zustand als Grundlage:\n\n`+
+      `${a ? `Zustandsnote ${a.zahlen.note ?? "–"} von 5, Urteil: ${a.urteil}.` : "Noch keine abgeschlossene Begehung."}\n`+
+      `${obj.kritisch} sicherheitsrelevante Punkte, ${obj.maengel} Mängel, ${obj.schadensnotizen} Schadensnotizen, ${obj.fotosSchaden} Fotos als Nachweis.\n`+
+      `Baujahr ${obj.prop.build_year || "unbekannt"}, ${obj.prop.units_count || 1} Einheiten, ${obj.prop.living_area ? obj.prop.living_area+" m²" : "Fläche nicht erfasst"}.\n\n`+
+      `Damit geht ein Sachverständiger in die Bewertung. Ein belastbares Wertgutachten muss in Österreich von einem `+
+      `gerichtlich zertifizierten Sachverständigen kommen, in Deutschland von einem öffentlich bestellten und vereidigten.`};
+  }
+  if(hat("zustand","note","wie steht","überblick","uebersicht","zusammenfass")){
+    return {text: a
+      ? `${a.urteil}. ${a.empfehlung}\n\nZustandsnote ${a.zahlen.note ?? "–"} von 5, ${a.zahlen.bearbeitet} von ${a.zahlen.gesamt} Punkten bearbeitet.`
+      : "Für dieses Objekt gibt es noch keine abgeschlossene Begehung."};
+  }
+  if(hat("mangel","mängel","schaden","schäden","defekt","problem")){
+    return {text: obj.maengelListe.length
+      ? `${obj.maengelListe.length} Auffälligkeiten:`
+      : "Keine Mängel erfasst.", liste: obj.maengelListe.slice(0,12)};
+  }
+  if(hat("offen","unerledigt","fehlt","rest")){
+    return {text: obj.offen ? `${obj.offen} Prüfpunkte sind noch unbearbeitet.` : "Alle Prüfpunkte sind bearbeitet."};
+  }
+  if(hat("foto","bild","nachweis")){
+    return {text:`${obj.fotos} Fotos hinterlegt, davon ${obj.fotosSchaden} als Nachweis für einen Schaden markiert.`};
+  }
+  if(hat("termin","wann","nächste","naechste","kalender")){
+    return {text: obj.termin
+      ? `Nächster Termin: ${fmtDate(obj.termin.__naechster)} um ${obj.termin.start_time}, ${planText(obj.termin)}.`
+      : "Für dieses Objekt ist kein Termin geplant."};
+  }
+  if(hat("begehung","letzte","historie","verlauf")){
+    return {text: obj.letzte
+      ? `Letzte abgeschlossene Begehung: ${fmtDate(obj.letzte.inspection_date)}, Note ${obj.letzte.score ?? "–"}, Prüfer ${obj.letzte.inspector_name || "unbekannt"}.`
+      : "Noch keine abgeschlossene Begehung."};
+  }
+  return {text:`Zu „${frage}\" habe ich keine Auswertung. Frag mich nach Zustand, Mängeln, offenen Punkten, Fotos, Terminen oder Wert. Für Gesetze nenn einfach das Thema.`};
+}
+
+async function ladeObjektKontext(propId){
+  const [pr, insp, notizen, fotos, plaene] = await Promise.all([
+    sb.from("properties").select("*").eq("id",propId).maybeSingle(),
+    sb.from("inspections").select("*").eq("property_id",propId).order("inspection_date",{ascending:false}),
+    sb.from("inspection_notes").select("*").eq("property_id",propId),
+    sb.from("property_photos").select("id,damage").eq("property_id",propId),
+    sb.from("inspection_plans").select("*").eq("property_id",propId).eq("active",true)
+  ]);
+  const prop = pr.data; if(!prop) return null;
+  const liste = insp.data || [];
+  const letzte = liste.find(i=>i.status==="abgeschlossen") || null;
+  const items = letzte
+    ? (await sb.from("inspection_items").select("*").eq("inspection_id", letzte.id)).data || []
+    : [];
+  const maengelListe = items.filter(i=>!i.hidden && (i.defect || i.presence==="nicht_vorhanden" || (i.rating!=null && i.rating<=2)))
+    .map(i=>`${i.category_name}: ${i.criterion_name}${i.note?" ("+i.note+")":""}`);
+  const termine = (plaene.data||[]).map(pl=>({...pl, __naechster:naechsterTermin(pl)}))
+    .sort((a,b)=>a.__naechster.localeCompare(b.__naechster));
+  return {
+    prop, letzte,
+    analyse: letzte && letzte.analysis && typeof letzte.analysis === "object" ? letzte.analysis : null,
+    maengelListe,
+    maengel: maengelListe.length,
+    kritisch: items.filter(i=>i.critical && i.presence==="nicht_vorhanden").length,
+    offen: items.filter(i=>!i.hidden && (!i.presence || i.presence==="offen")).length,
+    schadensnotizen: (notizen.data||[]).filter(n=>n.damage).length,
+    fotos: (fotos.data||[]).length,
+    fotosSchaden: (fotos.data||[]).filter(f=>f.damage).length,
+    termin: termine[0] || null
+  };
+}
+
+function viewAssistent(){
+  S.chat = S.chat || [];
+  /* Falls direkt hierher gesprungen wurde, die Objektliste für das @ nachladen */
+  if(!(S.properties||[]).length){
+    sb.from("properties").select("*").eq("status","aktiv").order("name")
+      .then(r => { S.properties = r.data || []; });
+  }
+  $("#view").innerHTML = `
+    <h1>Assistent</h1>
+    <div class="card" style="border-left:4px solid var(--brand)">
+      <div class="small">
+        Der Assistent antwortet <strong>aus deinen erfassten Daten</strong>, nicht aus dem Internet und nicht aus dem Bauch.
+        Schreib ein <strong>@</strong> und wähle eine Immobilie, dann bezieht sich jede Antwort darauf.
+      </div>
+    </div>
+    <div class="card" id="chat-verlauf" style="min-height:180px;max-height:52dvh;overflow:auto">
+      ${S.chat.length ? S.chat.map(m=>`
+        <div class="substep" style="border-left-color:${m.rolle==="ich"?"var(--brand)":"var(--line)"}">
+          <h4>${m.rolle==="ich"?"Du":"Assistent"}${m.objekt?` · @${esc(m.objekt)}`:""}</h4>
+          <div class="small" style="white-space:pre-wrap">${esc(m.text)}</div>
+          ${m.liste?.length?`<ul class="small" style="margin:6px 0 0 18px">${m.liste.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:""}
+          ${m.recht?.length?m.recht.map(r=>`<div class="small" style="margin-top:6px">
+            <strong>${esc(r.thema)}</strong> (${r.land==="AT"?"Österreich":"Deutschland"}): ${esc(r.quelle)}
+            <a href="${esc(r.link||RIS)}" target="_blank" rel="noopener">Quelle</a></div>`).join(""):""}
+        </div>`).join("")
+      : `<div class="small muted">Noch keine Fragen. Probier zum Beispiel „@" und dann „Wie ist der Zustand?" oder „Was sagt das Gesetz zu Rauchmeldern?"</div>`}
+    </div>
+    ${S.chatObjekt?`<div class="row" style="margin-bottom:8px">
+      <span class="badge brand">@${esc(S.chatObjekt.name)}</span>
+      <button class="btn ghost sm" onclick="chatObjektLoesen()">lösen</button>
+    </div>`:""}
+    <div id="chat-vorschlag"></div>
+    <div class="row">
+      <input id="chat-eingabe" placeholder="Frage stellen, @ für Immobilie" style="flex:1;min-width:200px"
+        oninput="chatVorschlag(this.value)" onkeydown="if(event.key==='Enter')chatSenden()">
+      <button class="btn" onclick="chatSenden()">Senden</button>
+    </div>`;
+  el("chat-eingabe")?.focus();
+  const v = el("chat-verlauf"); if(v) v.scrollTop = v.scrollHeight;
+}
+
+function chatVorschlag(wert){
+  const ziel = el("chat-vorschlag");
+  if(!ziel) return;
+  const m = wert.match(/@([^@]*)$/);
+  if(!m){ ziel.innerHTML = ""; return; }
+  const such = m[1].toLowerCase();
+  const treffer = (S.properties||[]).filter(p => p.name.toLowerCase().includes(such)).slice(0,6);
+  ziel.innerHTML = treffer.length ? `<div class="card tight" style="margin-bottom:8px">
+    ${treffer.map(p=>`<button class="btn sec sm" style="margin:2px" onclick="chatObjektWaehlen('${p.id}')">${esc(p.name)}</button>`).join("")}
+  </div>` : "";
+}
+function chatObjektWaehlen(id){
+  const p = (S.properties||[]).find(x=>x.id===id);
+  if(!p) return;
+  S.chatObjekt = p;
+  const feld = el("chat-eingabe");
+  if(feld) feld.value = feld.value.replace(/@[^@]*$/, "").trim();
+  el("chat-vorschlag").innerHTML = "";
+  viewAssistent();
+  toast(`@${p.name} angeheftet ✓`);
+}
+function chatObjektLoesen(){ S.chatObjekt = null; S.chatKontext = null; viewAssistent(); }
+
+async function chatSenden(){
+  const feld = el("chat-eingabe");
+  const frage = (feld?.value || "").trim();
+  if(!frage) return;
+  S.chat.push({rolle:"ich", text:frage, objekt:S.chatObjekt?.name});
+  feld.value = "";
+  viewAssistent();
+
+  if(S.chatObjekt && (!S.chatKontext || S.chatKontext.prop.id !== S.chatObjekt.id)){
+    S.chatKontext = await ladeObjektKontext(S.chatObjekt.id);
+  }
+  const a = assistentAntwort(frage, S.chatObjekt ? S.chatKontext : null);
+  S.chat.push({rolle:"bot", text:a.text, liste:a.liste, recht:a.recht, objekt:S.chatObjekt?.name});
+  viewAssistent();
 }
 
 /* =========================================================
