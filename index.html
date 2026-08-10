@@ -795,76 +795,98 @@ const DE = p => `https://www.gesetze-im-internet.de/${p}`;
 const RIS = "https://www.ris.bka.gv.at/";
 
 const RECHT = [
-  {thema:"Erhaltungspflicht des Vermieters", kat:"Allgemein", land:"AT",
+  {thema:"Erhaltungspflicht des Vermieters", kat:"Allgemein", land:"AT", syn:["Reparatur","Instandhaltung","Instandsetzung","Mangel","Mängel","Vermieter","Mieter"],
    quelle:"MRG § 3, ABGB § 1096", link:RIS,
    hinweis:"Regelt, welche Erhaltungsarbeiten der Vermieter schuldet und wann der Mieter Anspruch auf Behebung hat. Grundlage, um Mängel aus einer Begehung geltend zu machen."},
-  {thema:"Erhaltungspflicht des Vermieters", kat:"Allgemein", land:"DE",
+  {thema:"Erhaltungspflicht des Vermieters", kat:"Allgemein", land:"DE", syn:["Reparatur","Instandhaltung","Instandsetzung","Mangel","Mängel","Vermieter","Mieter"],
    quelle:"BGB § 535 Abs. 1", link:DE("bgb/__535.html"),
    hinweis:"Der Vermieter hat die Mietsache in vertragsgemäßem Zustand zu erhalten. Bezugspunkt für dokumentierte Mängel."},
-  {thema:"Mangel und Mietminderung", kat:"Allgemein", land:"DE",
+  {thema:"Mangel und Mietminderung", kat:"Allgemein", land:"DE", syn:["Mietminderung","Miete","Mangel","Mängel","mindern"],
    quelle:"BGB § 536", link:DE("bgb/__536.html"),
    hinweis:"Was als Mangel gilt und wann die Miete gemindert werden kann. Eine dokumentierte Begehung mit Fotos ist hier ein starkes Beweismittel."},
-  {thema:"Haftung für Bauwerke, Verkehrssicherung", kat:"Allgemein", land:"AT",
+  {thema:"Haftung für Bauwerke, Verkehrssicherung", kat:"Allgemein", land:"AT", syn:["Haftung","Verkehrssicherung","Verkehrssicherungspflicht","Streupflicht","Unfall"],
    quelle:"ABGB § 1319", link:RIS,
    hinweis:"Haftung des Besitzers eines Bauwerks für Schäden durch mangelhafte Beschaffenheit. Regelmäßige dokumentierte Kontrolle entlastet."},
-  {thema:"Haftung, Verkehrssicherungspflicht", kat:"Allgemein", land:"DE",
+  {thema:"Haftung, Verkehrssicherungspflicht", kat:"Allgemein", land:"DE", syn:["Haftung","Verkehrssicherung","Streupflicht","Unfall","Einsturz"],
    quelle:"BGB §§ 823, 836", link:DE("bgb/__836.html"),
    hinweis:"Haftung bei Einsturz oder Ablösung von Gebäudeteilen. Nachweisbare Kontrollen sind der zentrale Entlastungsbeweis."},
-  {thema:"Rauchwarnmelder", kat:"Brandschutz", land:"AT",
+  {thema:"Rauchwarnmelder", kat:"Brandschutz", land:"AT", syn:["Rauchmelder","Rauchwarnmelder","Brandmelder","Feuermelder","Brandschutz","Feuer"],
    quelle:"Landesbauordnungen und OIB-Richtlinie 2", link:RIS,
    hinweis:"Die Pflicht ist Landessache und je Bundesland unterschiedlich geregelt. Für das jeweilige Bundesland prüfen."},
-  {thema:"Rauchwarnmelder", kat:"Brandschutz", land:"DE",
+  {thema:"Rauchwarnmelder", kat:"Brandschutz", land:"DE", syn:["Rauchmelder","Rauchwarnmelder","Brandmelder","Feuermelder","Brandschutz","Feuer"],
    quelle:"Landesbauordnungen, Wartung nach DIN 14676", link:DE(""),
    hinweis:"Einbau- und Wartungspflicht ist Ländersache. Die Bauordnung des Bundeslandes ist maßgeblich."},
-  {thema:"Elektrische Anlagen, wiederkehrende Prüfung", kat:"Elektrik", land:"AT",
+  {thema:"Elektrische Anlagen, wiederkehrende Prüfung", kat:"Elektrik", land:"AT", syn:["Elektrik","Strom","E-Check","FI","Sicherung","Verteiler","Elektro"],
    quelle:"Elektrotechnikgesetz, ÖVE/ÖNORM E 8001", link:RIS,
    hinweis:"Prüffristen für ortsfeste Anlagen. Für vermietete Objekte besonders relevant."},
-  {thema:"Elektrische Anlagen, Prüfpflicht", kat:"Elektrik", land:"DE",
+  {thema:"Elektrische Anlagen, Prüfpflicht", kat:"Elektrik", land:"DE", syn:["Elektrik","Strom","E-Check","FI","Sicherung","Verteiler","Elektro"],
    quelle:"BetrSichV, DGUV V3, DIN VDE 0100", link:DE("betrsichv_2015/"),
    hinweis:"Prüfung ortsfester Anlagen und Betriebsmittel durch eine Elektrofachkraft."},
-  {thema:"Aufzugsanlagen, Prüfung", kat:"Aufzug", land:"AT",
+  {thema:"Aufzugsanlagen, Prüfung", kat:"Aufzug", land:"AT", syn:["Aufzug","Lift","Fahrstuhl","Notruf"],
    quelle:"Aufzüge-Sicherheitsverordnung (ASV)", link:RIS,
    hinweis:"Wiederkehrende Überprüfung und Abnahme von Aufzugsanlagen."},
-  {thema:"Aufzugsanlagen, Prüfung", kat:"Aufzug", land:"DE",
+  {thema:"Aufzugsanlagen, Prüfung", kat:"Aufzug", land:"DE", syn:["Aufzug","Lift","Fahrstuhl","Notruf"],
    quelle:"BetrSichV, TRBS 3121", link:DE("betrsichv_2015/"),
    hinweis:"Prüfung durch eine zugelassene Überwachungsstelle, Notrufsystem verpflichtend."},
-  {thema:"Trinkwasser, Legionellenprüfung", kat:"Sanitär", land:"AT",
+  {thema:"Trinkwasser, Legionellenprüfung", kat:"Sanitär", land:"AT", syn:["Legionellen","Trinkwasser","Warmwasser","Wasser","Boiler","Sanitär"],
    quelle:"Trinkwasserverordnung (TWV)", link:RIS,
    hinweis:"Untersuchungspflichten für Trinkwasser aus Großanlagen zur Warmwasserbereitung."},
-  {thema:"Trinkwasser, Legionellenprüfung", kat:"Sanitär", land:"DE",
+  {thema:"Trinkwasser, Legionellenprüfung", kat:"Sanitär", land:"DE", syn:["Legionellen","Trinkwasser","Warmwasser","Wasser","Boiler","Sanitär"],
    quelle:"TrinkwV", link:DE(""),
    hinweis:"Untersuchungspflicht für Großanlagen zur Trinkwassererwärmung in vermieteten Gebäuden."},
-  {thema:"Feuerungsanlagen, Überprüfung", kat:"Heizung", land:"AT",
+  {thema:"Feuerungsanlagen, Überprüfung", kat:"Heizung", land:"AT", syn:["Heizung","Kessel","Therme","Kamin","Rauchfang","Schornstein","Schornsteinfeger","Abgas"],
    quelle:"Heizungsanlagenverordnungen der Länder, Kehrordnung", link:RIS,
    hinweis:"Wiederkehrende Überprüfung und Kehrung, Zuständigkeit liegt bei den Ländern."},
-  {thema:"Feuerungsanlagen, Überprüfung", kat:"Heizung", land:"DE",
+  {thema:"Feuerungsanlagen, Überprüfung", kat:"Heizung", land:"DE", syn:["Heizung","Kessel","Therme","Kamin","Rauchfang","Schornstein","Schornsteinfeger","Abgas"],
    quelle:"1. BImSchV, Kehr- und Überprüfungsordnung", link:DE(""),
    hinweis:"Messung und Überprüfung durch den Schornsteinfeger, Fristen je Anlagentyp."},
-  {thema:"Energieausweis", kat:"Allgemein", land:"AT",
+  {thema:"Energieausweis", kat:"Allgemein", land:"AT", syn:["Energieausweis","Energiepass","Energie"],
    quelle:"Energieausweis-Vorlage-Gesetz (EAVG)", link:RIS,
    hinweis:"Vorlage- und Aushändigungspflicht bei Verkauf und Vermietung."},
-  {thema:"Energieausweis", kat:"Allgemein", land:"DE",
+  {thema:"Energieausweis", kat:"Allgemein", land:"DE", syn:["Energieausweis","Energiepass","Energie"],
    quelle:"GEG § 80 ff.", link:DE("geg/"),
    hinweis:"Pflicht zur Vorlage bei Verkauf und Vermietung, Angaben in Immobilienanzeigen."},
-  {thema:"Spielplätze, Sicherheit", kat:"Außenanlagen", land:"AT",
+  {thema:"Spielplätze, Sicherheit", kat:"Außenanlagen", land:"AT", syn:["Spielplatz","Spielgerät","Schaukel","Rutsche","Außenanlage"],
    quelle:"ÖNORM EN 1176", link:RIS,
    hinweis:"Sicherheitstechnische Anforderungen und wiederkehrende Kontrolle von Spielplatzgeräten."},
-  {thema:"Spielplätze, Sicherheit", kat:"Außenanlagen", land:"DE",
+  {thema:"Spielplätze, Sicherheit", kat:"Außenanlagen", land:"DE", syn:["Spielplatz","Spielgerät","Schaukel","Rutsche","Außenanlage"],
    quelle:"DIN EN 1176", link:DE(""),
    hinweis:"Regelmäßige Sicht-, Funktions- und Hauptkontrolle, Dokumentation empfohlen."},
-  {thema:"Schimmel und Feuchtigkeit", kat:"Bauschäden", land:"AT",
+  {thema:"Schimmel und Feuchtigkeit", kat:"Bauschäden", land:"AT", syn:["Schimmel","Feuchtigkeit","feucht","Nässe","Wasserschaden","Kondensat"],
    quelle:"ABGB § 1096, MRG § 3", link:RIS,
    hinweis:"Ob ein Mangel vorliegt, hängt von der Ursache ab. Fotos mit Datum und Raumangabe sind hier entscheidend."},
-  {thema:"Schimmel und Feuchtigkeit", kat:"Bauschäden", land:"DE",
+  {thema:"Schimmel und Feuchtigkeit", kat:"Bauschäden", land:"DE", syn:["Schimmel","Feuchtigkeit","feucht","Nässe","Wasserschaden","Kondensat"],
    quelle:"BGB § 536", link:DE("bgb/__536.html"),
    hinweis:"Streit dreht sich meist um die Ursache, Baumangel oder Nutzungsverhalten. Lückenlose Dokumentation ist der Kern."},
-  {thema:"Blitzschutz", kat:"Elektrik", land:"AT",
+  {thema:"Blitzschutz", kat:"Elektrik", land:"AT", syn:["Blitzschutz","Blitz","Erdung","Überspannung"],
    quelle:"ÖVE/ÖNORM E 8049", link:RIS,
    hinweis:"Anforderungen an Blitzschutzanlagen und deren Überprüfung."},
-  {thema:"Blitzschutz", kat:"Elektrik", land:"DE",
+  {thema:"Blitzschutz", kat:"Elektrik", land:"DE", syn:["Blitzschutz","Blitz","Erdung","Überspannung"],
    quelle:"DIN EN 62305", link:DE(""),
    hinweis:"Planung, Errichtung und Prüfung von Blitzschutzsystemen."}
 ];
+
+/* Eine Suche für beide Stellen: Nachschlagewerk und Assistent.
+   Umlaute werden vereinheitlicht und Wortanfänge verglichen, damit
+   "Rauchmelder", "rauchmeldern" und "Rauchwarnmelder" zusammenfinden. */
+function normalisiere(s){
+  return String(s||"").toLowerCase()
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss");
+}
+function rechtSuche(frage, land){
+  const q = normalisiere(frage);
+  const woerter = q.split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+  return RECHT.filter(r => {
+    if(land && land !== "alle" && r.land !== land) return false;
+    if(!woerter.length) return true;
+    const heu = normalisiere([r.thema, r.kat, r.quelle, r.hinweis, (r.syn||[]).join(" ")].join(" "));
+    return woerter.some(w => {
+      if(heu.includes(w)) return true;
+      const stamm = w.slice(0, Math.max(5, w.length - 3));   // Endungen wegschneiden
+      return heu.includes(stamm);
+    });
+  });
+}
 
 /* Wie eine Frage beantwortet wird */
 const ANTWORTTYPEN = [
@@ -1139,9 +1161,7 @@ function go(view, params={}){
 function viewRecht(){
   const suche = (S.params.q || "").toLowerCase();
   const land  = S.params.land || "alle";
-  const treffer = RECHT.filter(r =>
-    (land === "alle" || r.land === land) &&
-    (!suche || [r.thema, r.kat, r.quelle, r.hinweis].join(" ").toLowerCase().includes(suche)));
+  const treffer = rechtSuche(suche, land);
   const kats = [...new Set(treffer.map(r=>r.kat))];
 
   $("#view").innerHTML = `
@@ -1197,9 +1217,9 @@ function assistentAntwort(frage, obj){
     return {text:"Dafür brauche ich ein Objekt. Schreib ein @ und wähle deine Immobilie aus, dann beantworte ich es anhand der echten Daten."};
   }
   if(hat("recht","gesetz","paragraf","paragraph","vorschrift","pflicht")){
-    const stichwort = f.replace(/[^a-zäöüß ]/g," ").split(/\s+/).filter(w=>w.length>4);
-    const gefunden = RECHT.filter(r => stichwort.some(s =>
-      (r.thema+" "+r.kat+" "+r.hinweis).toLowerCase().includes(s))).slice(0,4);
+    /* Die Frageworte selbst wegwerfen, sonst passt "Gesetz" auf alles */
+    const ohneFragewort = f.replace(/\b(was|sagt|das|gesetz|gesetze|paragraf|paragraph|vorschrift|pflicht|welche|welches|gibt|zu|der|die|den|es|ist|sind|ueber|über|bei|fuer|für)\b/g," ");
+    const gefunden = rechtSuche(ohneFragewort, null).slice(0,4);
     return {text: gefunden.length
         ? "Dazu findest du im Nachschlagewerk:"
         : "Ich habe dazu keinen passenden Eintrag. Schau im Nachschlagewerk unter Recht, dort kannst du frei suchen.",
