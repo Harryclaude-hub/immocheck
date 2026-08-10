@@ -2804,7 +2804,9 @@ function zeichenMerkmale(maske, w, h, x0, y0, x1, y1){
     if(maske[y*w+x]){ tinte++; if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
   }
   const flaeche = Math.max(1,(x1-x0)*(y1-y0));
-  if(tinte < 8 || tinte/flaeche < 0.02) return null;      // praktisch leeres Kästchen
+  /* Niedrig angesetzt, weil Komma und Minus nur einen Bruchteil der Fläche belegen.
+     Ein wirklich leeres Kästchen liegt dank örtlicher Schwelle nahe null. */
+  if(tinte < 5 || tinte/flaeche < 0.007) return null;
   const bw = maxX-minX+1, bh = maxY-minY+1;
   const G = 8, v = new Float64Array(G*G);
   for(let y=minY;y<=maxY;y++) for(let x=minX;x<=maxX;x++){
