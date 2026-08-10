@@ -3349,6 +3349,66 @@ async function removeItem(id){
   renderInspection();
 }
 
+/* =========================================================
+   PRÜFSUMME
+   Beim Abschließen wird ein Fingerabdruck über alle Antworten, Notizen und
+   Fotos gebildet. Wer später etwas ändert, sieht das sofort.
+   ========================================================= */
+async function berechnePruefsumme(insp, items, notizen, fotos){
+  /* Feste Reihenfolge und feste Felder, sonst käme jedes Mal etwas anderes heraus. */
+  const inhalt = {
+    begehung: {
+      id: insp.id, titel: insp.title || "", datum: insp.inspection_date,
+      pruefer: insp.inspector_name || "", notizen: insp.general_notes || "",
+      bogen: insp.scan_summary || ""
+    },
+    punkte: (items||[]).slice()
+      .sort((a,b) => String(a.id).localeCompare(String(b.id)))
+      .map(i => [i.criterion_name, i.presence||"", i.rating??"", i.value_num??"",
+                 i.value_text||"", i.note||"", i.defect?1:0, i.hidden?1:0, i.photo_path||""].join("|")),
+    notizen: (notizen||[]).slice()
+      .sort((a,b) => String(a.id).localeCompare(String(b.id)))
+      .map(n => [n.room||"", n.text, n.damage?1:0].join("|")),
+    fotos: (fotos||[]).map(f => f.path).slice().sort()
+  };
+  const daten = new TextEncoder().encode(JSON.stringify(inhalt));
+  const puffer = await crypto.subtle.digest("SHA-256", daten);
+  return [...new Uint8Array(puffer)].map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
+/* Kurzform zum Vorlesen und Vergleichen */
+function hashKurz(h){
+  return h ? h.slice(0,8).toUpperCase().replace(/(.{4})/g,"$1 ").trim() : "–";
+}
+
+async function pruefeUnveraendert(id){
+  toast("Prüfsumme wird berechnet …");
+  await loadInspection(id);
+  const {insp, items} = IS;
+  if(!insp.integrity_hash){ toast("Für diese Begehung gibt es noch keine Prüfsumme.", 4000); return; }
+  const fotos = (await sb.from("property_photos").select("path").eq("inspection_id", id)).data || [];
+  const jetzt = await berechnePruefsumme(insp, items, IS.notizen, fotos);
+  const gleich = jetzt === insp.integrity_hash;
+  openModal(`
+    <h2>${gleich ? "Unverändert" : "Achtung, verändert"}</h2>
+    <div class="card" style="border-left:4px solid ${gleich?"var(--ok,#16a34a)":"var(--bad)"};box-shadow:none">
+      <div class="small">${gleich
+        ? `Die Begehung ist seit dem Abschluss am ${fmtDate(String(insp.integrity_at||"").slice(0,10))} <strong>nicht verändert</strong> worden. Antworten, Notizen und Fotos stimmen mit dem versiegelten Stand überein.`
+        : `Die Begehung wurde nach dem Abschluss <strong>verändert</strong>. Das kann in Ordnung sein, wenn du sie bewusst nachbearbeitet hast, ist für einen Nachweis aber wichtig zu wissen.`}</div>
+    </div>
+    <div class="small" style="margin-top:10px">
+      <div class="xs muted">Beim Abschluss festgehalten</div>
+      <div class="mono">${hashKurz(insp.integrity_hash)}</div>
+      <div class="xs muted" style="margin-top:8px">Jetzt berechnet</div>
+      <div class="mono">${hashKurz(jetzt)}</div>
+    </div>
+    <div class="xs muted" style="margin-top:12px">
+      Der Fingerabdruck wird aus allen Antworten, Notizen und Fotos gebildet. Ändert sich ein einziges Zeichen, ändert sich der Fingerabdruck.
+      Er belegt die Unverändertheit, ersetzt aber kein Sachverständigengutachten.
+    </div>
+    <div class="row" style="margin-top:14px"><div class="spacer"></div><button class="btn" onclick="closeModal()">Schließen</button></div>`);
+}
+
 async function finishInspection(){
   const aktive = aktiveItems(IS.items);
   const st = itemStats(aktive);
@@ -3367,6 +3427,12 @@ async function finishInspection(){
     skipped_categories: IS.skipped,
     general_notes: el("gen-notes") ? el("gen-notes").value : IS.insp.general_notes
   };
+  /* Fingerabdruck über den Stand beim Abschluss */
+  try{
+    const fotos = (await sb.from("property_photos").select("path").eq("inspection_id", IS.insp.id)).data || [];
+    patch.integrity_hash = await berechnePruefsumme({...IS.insp, ...patch}, IS.items, IS.notizen, fotos);
+    patch.integrity_at = new Date().toISOString();
+  }catch(e){ /* ohne Prüfsumme ist der Abschluss trotzdem gültig */ }
   const {error} = await sb.from("inspections").update(patch).eq("id", IS.insp.id);
   if(error){ toast("Fehler: "+error.message,4000); return; }
   toast("Begehung abgeschlossen ✓");
@@ -3544,6 +3610,7 @@ async function viewInspectionResult(){
         </div>
         <div class="row">
           <button class="btn sec sm" onclick="reopenInspection('${insp.id}')">Bearbeiten</button>
+          ${insp.integrity_hash?`<button class="btn sec sm" onclick="pruefeUnveraendert('${insp.id}')">🔒 Unverändert prüfen</button>`:""}
           <button class="btn" onclick="makePdf('${insp.id}')">📄 PDF herunterladen</button>
         </div>
       </div>
@@ -3559,6 +3626,9 @@ async function viewInspectionResult(){
         <div class="stat" style="box-shadow:none;border-color:transparent;padding:0"><div class="l">Kritisch</div><div class="n" style="color:${st.critical.length?"#dc2626":"inherit"}">${st.critical.length}</div></div>
       </div>
       ${insp.general_notes?`<hr><div class="xs muted">Allgemeine Notizen</div><div class="small">${esc(insp.general_notes).replace(/\n/g,"<br>")}</div>`:""}
+      ${insp.integrity_hash?`<hr>
+        <div class="xs muted">Fingerabdruck, versiegelt am ${fmtDate(String(insp.integrity_at||"").slice(0,10))}</div>
+        <div class="mono small">${hashKurz(insp.integrity_hash)}</div>`:""}
     </div>
 
     ${analyseKarte(analyse)}
@@ -4534,6 +4604,9 @@ async function makePdf(id){
       doc.setFontSize(7.5); doc.setTextColor(148,163,184);
       doc.text(`${prop.name} · Prüfprotokoll vom ${fmtDate(insp.inspection_date)} · erstellt am ${fmtDateTime(new Date())}`, M, 290);
       doc.text(`Seite ${p} von ${pages}`, W-M, 290, {align:"right"});
+      if(insp.integrity_hash){
+        doc.text(`Fingerabdruck ${hashKurz(insp.integrity_hash)} · versiegelt am ${fmtDate(String(insp.integrity_at||"").slice(0,10))} · Unverändertheit in ImmoCheck prüfbar`, M, 293.5);
+      }
     }
 
     const safe = s => String(s||"objekt").replace(/[^a-zA-Z0-9äöüÄÖÜß_-]+/g,"_").slice(0,40);

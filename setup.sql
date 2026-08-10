@@ -687,6 +687,10 @@ alter table public.inspection_items add column if not exists max_value numeric;
 -- Ergebnis der automatischen Auswertung
 alter table public.inspections add column if not exists analysis jsonb;
 
+-- Fingerabdruck ueber die abgeschlossene Begehung, um spaetere Aenderungen sichtbar zu machen
+alter table public.inspections add column if not exists integrity_hash text;
+alter table public.inspections add column if not exists integrity_at   timestamptz;
+
 -- Freie Gebaeudekonfiguration
 alter table public.properties add column if not exists rooms_count    integer;
 alter table public.properties add column if not exists corridor_count integer;
