@@ -2474,7 +2474,7 @@ function fensterSumme(I, w, x0, y0, x1, y1){
 /* Sucht in einem Bildausschnitt die volle schwarze Passermarke. */
 function findeMarke(I, w, h, bereich, seitePx){
   const s = Math.max(5, Math.round(seitePx));
-  const ring = Math.max(3, Math.round(s*0.7));
+  const ring = Math.max(3, Math.round(s*0.45));
   const schritt = Math.max(1, Math.round(s/6));
   let best = -1, bx = 0, by = 0;
   for(let y=bereich.y0; y+s<=bereich.y1; y+=schritt){
@@ -2482,11 +2482,20 @@ function findeMarke(I, w, h, bereich, seitePx){
       const innenSumme = fensterSumme(I,w,x,y,x+s,y+s);
       const innen = innenSumme/(s*s);
       if(innen < 0.6) continue;                       // Marke ist nahezu voll schwarz
-      const ax0 = Math.max(0,x-ring), ay0 = Math.max(0,y-ring);
-      const ax1 = Math.min(w,x+s+ring), ay1 = Math.min(h,y+s+ring);
-      const flaeche = (ax1-ax0)*(ay1-ay0) - s*s;
-      const aussen = flaeche > 0 ? (fensterSumme(I,w,ax0,ay0,ax1,ay1) - innenSumme)/flaeche : 1;
-      const z = innen - aussen;                       // innen voll, ringsum hell
+      /* Jede der vier Seiten einzeln prüfen. Die Ecke eines großen dunklen Balkens
+         hat zwei dunkle Seiten und wird so verlässlich verworfen. */
+      const band = (bx0,by0,bx1,by1) => {
+        const cx0=Math.max(0,bx0), cy0=Math.max(0,by0), cx1=Math.min(w,bx1), cy1=Math.min(h,by1);
+        const fl=(cx1-cx0)*(cy1-cy0);
+        return fl > 0 ? fensterSumme(I,w,cx0,cy0,cx1,cy1)/fl : 1;
+      };
+      const seiten = [
+        band(x-ring, y-ring, x+s+ring, y),          // oben
+        band(x-ring, y+s,    x+s+ring, y+s+ring),   // unten
+        band(x-ring, y,      x,        y+s),        // links
+        band(x+s,    y,      x+s+ring, y+s)         // rechts
+      ];
+      const z = innen - Math.max(...seiten);          // innen voll, ringsum auf allen Seiten hell
       if(z > best){ best = z; bx = x; by = y; }
     }
   }
@@ -2686,7 +2695,8 @@ async function makePaperSheet(id){
     /* Passermarken in den Aussenrand, damit ein schiefes Foto zurechtgerechnet werden kann.
        Reihenfolge fest: oben links, oben rechts, unten links, unten rechts. */
     const MARK = 6;
-    const MARKEN = [{x:7, y:36}, {x:W-7, y:36}, {x:7, y:H-7}, {x:W-7, y:H-7}];
+    /* Abstand zum Kopfbalken und zum Tabellenrand, damit rund um die Marke nur weißes Papier liegt */
+    const MARKEN = [{x:6, y:42}, {x:W-6, y:42}, {x:6, y:H-8}, {x:W-6, y:H-8}];
 
     doc.setFillColor(29,78,216); doc.rect(0,0,W,28,"F");
     doc.setFillColor(220,38,38); doc.rect(0,28,W,1.6,"F");
