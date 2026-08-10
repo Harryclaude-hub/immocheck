@@ -2461,10 +2461,18 @@ function analysiere(insp, prop, items, historie){
 
   /* Gesamturteil */
   let ampel, urteil, empfehlung;
+  const zuWenig = aktiv.length > 0 && offen.length > aktiv.length*0.3;
   if(sicherheit.length){
     ampel = "rot";
     urteil = "Handlungsbedarf, sicherheitsrelevante Mängel vorhanden";
-    empfehlung = `Zuerst die ${sicherheit.length} sicherheitsrelevanten Punkte beheben, danach erneut prüfen.`;
+    empfehlung = sicherheit.length === 1
+      ? "Zuerst den sicherheitsrelevanten Punkt beheben, danach erneut prüfen."
+      : `Zuerst die ${sicherheit.length} sicherheitsrelevanten Punkte beheben, danach erneut prüfen.`;
+  } else if(zuWenig){
+    /* Ein gutes Urteil über eine kaum bearbeitete Begehung wäre irreführend */
+    ampel = "gelb";
+    urteil = "Für ein Urteil wurde zu wenig geprüft";
+    empfehlung = `Erst ${offen.length} von ${aktiv.length} Punkten sind unbearbeitet. Die Begehung sollte vervollständigt werden, bevor eine Aussage möglich ist.`;
   } else if(ausReisser.length || schlecht.length >= 3 || ueberfaellig.length || (st.score!=null && st.score < 3)){
     ampel = "gelb";
     urteil = "Mängel vorhanden, keine unmittelbare Gefahr";
@@ -2478,7 +2486,7 @@ function analysiere(insp, prop, items, historie){
     urteil = "Zustand durchschnittlich";
     empfehlung = "Einzelne Punkte beobachten und bei der nächsten Begehung erneut ansehen.";
   }
-  if(offen.length > aktiv.length*0.3){
+  if(zuWenig && ampel !== "gelb"){
     empfehlung += " Achtung: Ein großer Teil wurde nicht bearbeitet, das Urteil ist entsprechend unsicher.";
   }
 
@@ -2781,6 +2789,103 @@ function abbilden(H, X, Y){
   return {x:(H[0]*X + H[1]*Y + H[2])/n, y:(H[3]*X + H[4]*Y + H[5])/n};
 }
 
+/* =========================================================
+   ZIFFERN IN EINZELKÄSTCHEN ERKENNEN
+   Merkmalsvergleich gegen selbst erzeugte Schriftvarianten.
+   Läuft im Browser, nichts wird verschickt.
+   ========================================================= */
+const ZEICHEN = ["0","1","2","3","4","5","6","7","8","9",",","-"];
+let ZIFFER_MUSTER = null;
+
+/* 8x8 Tintendichte im Rahmen des Zeichens, dazu das Seitenverhältnis. */
+function zeichenMerkmale(maske, w, h, x0, y0, x1, y1){
+  let minX=x1, minY=y1, maxX=x0-1, maxY=y0-1, tinte=0;
+  for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++){
+    if(maske[y*w+x]){ tinte++; if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
+  }
+  const flaeche = Math.max(1,(x1-x0)*(y1-y0));
+  if(tinte < 8 || tinte/flaeche < 0.02) return null;      // praktisch leeres Kästchen
+  const bw = maxX-minX+1, bh = maxY-minY+1;
+  const G = 8, v = new Float64Array(G*G);
+  for(let y=minY;y<=maxY;y++) for(let x=minX;x<=maxX;x++){
+    if(!maske[y*w+x]) continue;
+    v[Math.min(G-1, Math.floor((y-minY)/bh*G))*G + Math.min(G-1, Math.floor((x-minX)/bw*G))]++;
+  }
+  let s=0; for(let i=0;i<G*G;i++) s+=v[i];
+  for(let i=0;i<G*G;i++) v[i] /= s || 1;
+  return {v, seiten: bw/bh};
+}
+
+/* Muster aus mehreren Schriften, Neigungen und Strichstärken. */
+function baueZifferMuster(){
+  if(ZIFFER_MUSTER) return ZIFFER_MUSTER;
+  const schriften = ["48px Georgia","48px Arial","46px 'Courier New'","46px 'Trebuchet MS'","48px Verdana","44px 'Times New Roman'"];
+  const neigungen = [-0.28, -0.12, 0, 0.14, 0.3];
+  const dicken = [0, 1.6];
+  const CW = 80, CH = 96;
+  const c = document.createElement("canvas"); c.width = CW; c.height = CH;
+  const g = c.getContext("2d", {willReadFrequently:true});
+  const muster = [];
+  ZEICHEN.forEach((z, klasse) => {
+    schriften.forEach(f => neigungen.forEach(n => dicken.forEach(dk => {
+      g.setTransform(1,0,0,1,0,0);
+      g.fillStyle="#fff"; g.fillRect(0,0,CW,CH);
+      g.fillStyle="#000"; g.strokeStyle="#000"; g.lineWidth=dk;
+      g.font=f; g.textAlign="center"; g.textBaseline="middle";
+      g.setTransform(1,0,n,1,0,0);
+      g.fillText(z, CW/2 - n*CH/2, CH/2);
+      if(dk) g.strokeText(z, CW/2 - n*CH/2, CH/2);
+      g.setTransform(1,0,0,1,0,0);
+      const d2 = g.getImageData(0,0,CW,CH).data;
+      const maske = new Uint8Array(CW*CH);
+      for(let i=0,p=0;p<CW*CH;i+=4,p++) maske[p] = d2[i] < 128 ? 1 : 0;
+      const mm = zeichenMerkmale(maske, CW, CH, 0, 0, CW, CH);
+      if(mm) muster.push({klasse, v:mm.v, seiten:mm.seiten});
+    })));
+  });
+  ZIFFER_MUSTER = muster;
+  return muster;
+}
+
+/* Nächster Nachbar, dazu der Abstand zur zweitbesten Klasse als Maß für die Sicherheit. */
+function erkenneZeichen(mm){
+  const muster = baueZifferMuster();
+  const jeKlasse = new Array(ZEICHEN.length).fill(Infinity);
+  for(const m of muster){
+    let d = 0;
+    for(let i=0;i<64;i++){ const t = mm.v[i]-m.v[i]; d += t*t; }
+    d += 0.03*Math.pow(Math.log((mm.seiten||1)/(m.seiten||1)), 2);
+    if(d < jeKlasse[m.klasse]) jeKlasse[m.klasse] = d;
+  }
+  const sortiert = jeKlasse.map((d,k)=>({d,k})).sort((a,b)=>a.d-b.d);
+  const beste = sortiert[0], zweite = sortiert[1];
+  return {zeichen: ZEICHEN[beste.k], abstand:+beste.d.toFixed(4),
+          sicher: beste.d < 0.03 && zweite.d > beste.d*1.3};
+}
+
+/* Liest die Messwert-Kästchen einer Seite. */
+function leseZiffern(maske, w, h, H, layout, seite){
+  const proNr = {};
+  (layout.ziffern||[]).filter(z => z.seite === seite).forEach(z => {
+    const ix = z.w*0.16, iy = z.h*0.14;              // Rahmenlinien aussparen
+    const e = [abbilden(H, z.x+ix, z.y+iy), abbilden(H, z.x+z.w-ix, z.y+iy),
+               abbilden(H, z.x+z.w-ix, z.y+z.h-iy), abbilden(H, z.x+ix, z.y+z.h-iy)];
+    const x0 = Math.max(0, Math.floor(Math.min(...e.map(p=>p.x))));
+    const x1 = Math.min(w, Math.ceil (Math.max(...e.map(p=>p.x))));
+    const y0 = Math.max(0, Math.floor(Math.min(...e.map(p=>p.y))));
+    const y1 = Math.min(h, Math.ceil (Math.max(...e.map(p=>p.y))));
+    const mm = (x1-x0 > 4 && y1-y0 > 4) ? zeichenMerkmale(maske, w, h, x0, y0, x1, y1) : null;
+    (proNr[z.nr] = proNr[z.nr] || [])[z.idx] = mm ? erkenneZeichen(mm) : null;
+  });
+  return Object.entries(proNr).map(([nr, felder]) => {
+    const text = felder.map(f => f ? f.zeichen : "").join("");
+    const belegt = felder.filter(Boolean);
+    const zahl = parseFloat(text.replace(",", "."));
+    return {nr:Number(nr), text, wert: isFinite(zahl) ? zahl : null,
+            sicher: belegt.length > 0 && belegt.every(f => f.sicher)};
+  }).filter(r => r.text.length);
+}
+
 /* Liest eine Bogenseite aus einem Foto. Gibt je Zeilennummer den erkannten Wert zurück. */
 async function leseBogenSeite(url, layout, seite){
   const canvas = await bildInCanvas(url, 1600);
@@ -2830,7 +2935,7 @@ async function leseBogenSeite(url, layout, seite){
     return {nr:Number(nr), wert, status, tinte:+beste.toFixed(3), zweite:+zweite.toFixed(3)};
   }).sort((a,b) => a.nr - b.nr);
 
-  return {zeilen, marken:gefunden};
+  return {zeilen, marken:gefunden, messwerte: leseZiffern(maske, w, h, H, layout, seite)};
 }
 
 /* Liest alle hochgeladenen Seiten und zeigt das Ergebnis zur Kontrolle. */
@@ -2844,6 +2949,7 @@ async function leseScans(){
 
   toast("Bogen wird ausgelesen …");
   const alle = [];
+  const messwerte = [];
   const probleme = [];
   for(let i=0;i<IS.scanUrls.length;i++){
     const s = IS.scanUrls[i];
@@ -2851,10 +2957,11 @@ async function leseScans(){
     try{
       const r = await leseBogenSeite(s.url, layout, i+1);
       if(r.fehler) probleme.push(`Seite ${i+1}: ${r.fehler}`);
-      else alle.push(...r.zeilen);
+      else { alle.push(...r.zeilen); messwerte.push(...(r.messwerte||[])); }
     }catch(e){ probleme.push(`Seite ${i+1}: ${e.message}`); }
   }
-  if(!alle.length){
+  IS.leseMesswerte = messwerte;
+  if(!alle.length && !messwerte.length){
     toast("Nichts erkannt", 2000);
     openModal(`<h2>Auslesen nicht möglich</h2>
       <div class="small">${probleme.map(p=>esc(p)).join("<br>")||"Keine auswertbare Seite gefunden."}</div>
@@ -2900,6 +3007,14 @@ function zeigeLeseErgebnis(zeilen, probleme){
           ${z.status==="unsicher"?'<span class="badge warn xs">unsicher</span>':""}</td>
         <td>${auswahl(z)}</td>
       </tr>`).join("")}
+      ${(IS.leseMesswerte||[]).map(m=>`<tr>
+        <td class="mono">${m.nr}</td>
+        <td class="small">${esc(nachNr[m.nr]?.criterion_name || "unbekannt")}
+          <span class="badge ${m.sicher?"info":"warn"} xs">gelesen: ${esc(m.text)}</span>
+          ${m.sicher?"":'<span class="badge warn xs">bitte prüfen</span>'}</td>
+        <td><input type="number" step="any" class="lese-messwert" data-nr="${m.nr}"
+              style="max-width:120px" value="${m.wert ?? ""}"></td>
+      </tr>`).join("")}
       </tbody></table>
     </div>
     <div class="row">
@@ -2929,6 +3044,16 @@ async function uebernehmeLeseErgebnis(){
     }
     if(!patch) continue;
     await saveItem(it.id, patch);
+    gesetzt++;
+  }
+  /* Gelesene Messwerte */
+  for(const inp of [...document.querySelectorAll(".lese-messwert")]){
+    if(inp.value === "") continue;
+    const it = nachNr[Number(inp.dataset.nr)];
+    if(!it) continue;
+    const n = Number(inp.value);
+    if(!isFinite(n)) continue;
+    await saveItem(it.id, {value_num:n, presence:"vorhanden"});
     gesetzt++;
   }
   closeModal();
@@ -2995,7 +3120,8 @@ async function makePaperSheet(id){
     });
 
     /* Geometrie mitschreiben, damit ein Foto des Bogens später ausgelesen werden kann */
-    const layout = {version:2, seite:{w:W, h:H}, marken:MARKEN, markeMm:MARK, kaesten:[]};
+    const layout = {version:3, seite:{w:W, h:H}, marken:MARKEN, markeMm:MARK, kaesten:[], ziffern:[]};
+    const ZIFFERN_PRO_WERT = 5;
     const nachNr = {};
     aktiv.forEach(it => { nachNr[it.__nr] = it; });
 
@@ -3026,6 +3152,26 @@ async function makePaperSheet(id){
       doc.autoTable({
         didDrawCell: d => {
           if(d.section !== "body") return;
+          const seiteNr = doc.internal.getCurrentPageInfo().pageNumber;
+
+          /* Messwerte bekommen Einzelkästchen, ein Zeichen je Kästchen */
+          if(d.column.index === 8){
+            const mw = nachNr[Number(d.row.raw[0])];
+            if(mw && mw.answer_type === "messwert"){
+              const bw = Math.min(5.2, (d.cell.width - 2) / ZIFFERN_PRO_WERT);
+              const bh = Math.min(d.cell.height - 1.4, 6.2);
+              const x0 = d.cell.x + 1;
+              const y0 = d.cell.y + (d.cell.height - bh)/2;
+              doc.setDrawColor(148,163,184); doc.setLineWidth(0.25);
+              for(let k=0;k<ZIFFERN_PRO_WERT;k++){
+                doc.rect(x0 + k*bw, y0, bw, bh);
+                layout.ziffern.push({nr: mw.__nr, idx:k, seite:seiteNr,
+                  x:+(x0+k*bw).toFixed(2), y:+y0.toFixed(2), w:+bw.toFixed(2), h:+bh.toFixed(2)});
+              }
+            }
+            return;
+          }
+
           const idx = d.column.index - 2;
           if(idx < 0 || idx > 5) return;
           const it = nachNr[Number(d.row.raw[0])];
