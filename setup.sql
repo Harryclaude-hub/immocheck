@@ -598,6 +598,33 @@ alter table public.inspection_items add column if not exists options    text[] d
 alter table public.inspection_items add column if not exists value_num  numeric;
 alter table public.inspection_items add column if not exists value_text text;
 
+-- Fotos zum Objekt, zu einem Raum, zu einer Einheit oder als Nachweis zu einer Notiz
+create table if not exists public.property_photos (
+  id uuid primary key default gen_random_uuid(),
+  property_id   uuid not null references public.properties(id) on delete cascade,
+  unit_id       uuid references public.units(id) on delete set null,
+  inspection_id uuid references public.inspections(id) on delete set null,
+  note_id       uuid references public.inspection_notes(id) on delete cascade,
+  room text,
+  caption text,
+  path text not null,
+  damage boolean not null default false,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists property_photos_property_idx on public.property_photos(property_id, created_at desc);
+create index if not exists property_photos_note_idx     on public.property_photos(note_id);
+
+alter table public.property_photos enable row level security;
+drop policy if exists fotos_p_select on public.property_photos;
+create policy fotos_p_select on public.property_photos for select to authenticated using (public.is_active_user());
+drop policy if exists fotos_p_insert on public.property_photos;
+create policy fotos_p_insert on public.property_photos for insert to authenticated with check (public.is_active_user());
+drop policy if exists fotos_p_update on public.property_photos;
+create policy fotos_p_update on public.property_photos for update to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists fotos_p_delete on public.property_photos;
+create policy fotos_p_delete on public.property_photos for delete to authenticated using (public.is_active_user());
+
 -- Geplante Begehungstermine, einmalig oder wiederkehrend
 create table if not exists public.inspection_plans (
   id uuid primary key default gen_random_uuid(),

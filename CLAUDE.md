@@ -33,10 +33,67 @@ Das Skript baut, committet, pusht und schaltet beim ersten Lauf GitHub Pages ein
 
 Wenn der Nutzer sagt "veröffentliche", "lade hoch", "mach es live" oder Ähnliches: Build, kurzer Test, dann `deploy.sh` mit einer aussagekräftigen Nachricht auf Deutsch.
 
-## Zwei Ausgaben
+## Verbindung
 
-- **`index.html`** ist die öffentliche Version. Die Konstanten `SUPABASE_URL` und `SUPABASE_KEY` enthalten Platzhalter, deshalb fragt die App beim ersten Start nach Project URL und anon key und speichert beides im Browser. So kann jeder das Projekt mit seiner eigenen Datenbank nutzen.
-- **`ImmoCheck-privat.html`** entsteht nur, wenn `privat.json` mit `{"url": "...", "key": "..."}` existiert. Diese Datei hat die Verbindung fest eingebaut und ist für den eigenen Webspace gedacht. Sie darf nicht ins Repository.
+Seit August 2026 sind Project URL und `anon` key **fest in `src/app.html` eingebaut**, damit sich Leute
+einfach anmelden können, ohne selbst eine Datenbank einzurichten.
+
+- Projekt: `immo-check`, Ref `mqmevpyatjsambervgtu`, Region eu-central-1
+- Der `anon` key steht damit öffentlich in `index.html`. Das ist bei Supabase der vorgesehene Weg,
+  geschützt wird über Row Level Security, die auf allen Tabellen aktiv ist.
+- **Niemals den `service_role` key einbauen.** Vor jedem Push prüfen, dass im Token `"role":"anon"` steht.
+- `ImmoCheck-privat.html` entsteht nur, wenn `privat.json` existiert, und darf nicht ins Repository.
+  Die gleichnamige Datei in `Downloads` enthält private Zugangsdaten und ist tabu.
+
+## Stand der Funktionen
+
+Anmeldung mit E-Mail und Passwort, ohne Bestätigungsmail (Trigger `trg_auto_confirm_email`).
+Erste Registrierung wird Administrator, alle weiteren stehen auf `wartend` und müssen freigeschaltet werden.
+
+- **Gebäudestruktur:** Aufzüge, Kellerabteile, Dachbodenabteile, Zimmer, Gänge, Kellergeschosse,
+  dazu Mehrfachauswahl für Leitungen und Ausstattung je Ebene.
+- **Einheiten:** duplizieren (`duplicateUnit`) und mehrfach anlegen; `naechsteBezeichnung` zählt hoch
+  („Top 1" wird „Top 2"), vergebene Namen werden übersprungen, Mieterdaten werden nicht mitkopiert.
+- **Antworttypen:** `skala`, `ja_nein`, `messwert` (mit Einheit und Bereich), `auswahl`, `text`.
+  Nur `skala` fließt in die Note.
+- **Eigene Fragen je Objekt:** `criteria.property_id`. `S.criteria` lädt bewusst nur globale Punkte
+  (`.is("property_id", null)`), sonst verschmutzen sie Katalog und Vorlagen.
+- **Objektgebundene Kataloge:** `templates.property_id`.
+- **Papierbogen:** `makePaperSheet()` druckt einen Ankreuzbogen, jede Antwortart bekommt die passende Form.
+  Messwerte bekommen Einzelkästchen für die Ziffern.
+- **Auslesen:** Kreuze und Ziffern werden lokal im Browser erkannt, ohne externen Dienst.
+- **Auswertung:** `analysiere()` ist regelbasiert und liefert Ampel, Urteil, Empfehlung und Befunde.
+- **Notizen und Diktat:** je Raum, Schadenswörter werden erkannt, fließt in die Auswertung.
+- **Termine:** `inspection_plans` plus iCalendar-Datei mit Wiederholung und Erinnerung.
+
+## Fallen, die schon einmal Fehler verursacht haben
+
+Diese Punkte sind teuer erkauft. Bitte nicht rückgängig machen.
+
+1. **Ampel nie grün bei unvollständiger Begehung.** Über 30 Prozent unbearbeitete Punkte müssen zu
+   „Für ein Urteil wurde zu wenig geprüft" führen, sonst ist das Urteil irreführend.
+2. **Örtliche Schwelle beim Bildauslesen.** Eine globale Otsu-Schwelle kippt bei ungleicher
+   Ausleuchtung, und die hat jedes Handyfoto.
+3. **Passermarken auf allen vier Seiten einzeln prüfen.** Sonst wird die Ecke des blauen Kopfbalkens
+   für eine Marke gehalten und alles verrutscht.
+4. **Auflösung nicht senken.** Scans mit max 2600 px speichern, mit max 2400 px auslesen. Sonst sind
+   die Ziffernkästchen nur wenige Pixel breit und die Zeichenerkennung bricht zusammen.
+5. **Mindest-Tintenschwelle nicht anheben**, sonst fallen Komma und Minus komplett durch.
+6. **Datum niemals über `toISOString()` formatieren.** In `naechsterTermin()` war der Termin dadurch
+   je nach Zeitzone einen Tag zu früh. Örtlich formatieren.
+7. **Kästchen leer drucken.** Die Bedeutung („1 = Ja, 2 = Nein") gehört neben die Frage, nicht in das
+   Kästchen, sonst hält der Leser die gedruckten Zeichen für ein Kreuz.
+8. **Schemaänderungen immer auch in `setup.sql`**, idempotent, und die `alter table` erst **nach** dem
+   `create table` der betroffenen Tabelle.
+
+## Was bewusst nicht automatisch geht
+
+- **Freie Handschrift** wird nicht erkannt. Ziffern in vorgegebenen Kästchen ja, ganze Sätze nein.
+  Anmerkungen werden abgetippt.
+- **Diktat** läuft über die Spracherkennung des Browsers, also Google bei Chrome, Apple bei Safari.
+  Das ist der einzige Teil, der Daten nach außen gibt; Kreuze und Ziffern rechnen lokal.
+  Der Hinweis dazu steht in der Oberfläche und muss dort bleiben.
+- **Outlook im Web** kann über einen Link keine Wiederholung anlegen, dafür ist die Termindatei da.
 
 ## Datenmodell
 

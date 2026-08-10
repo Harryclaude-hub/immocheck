@@ -879,6 +879,7 @@ async function deleteProperty(id){
 async function viewProperty(){
   const id = S.params.id;
   loading(true);
+  const objektFotos = await ladeObjektFotos(id);
   const [pr, un, ins, eig, notiz, plaene] = await Promise.all([
     sb.from("properties").select("*").eq("id",id).maybeSingle(),
     sb.from("units").select("*").eq("property_id",id).order("label"),
@@ -1001,6 +1002,43 @@ async function viewProperty(){
         ${p.structure_notes?`<div class="small" style="margin-top:10px">${esc(p.structure_notes).replace(/\n/g,"<br>")}</div>`:""}
       </div>`;
     })()}
+
+    <div class="card">
+      <div class="row between">
+        <h3 style="margin:0">Fotos ${objektFotos.length?`<span class="badge brand">${objektFotos.length}</span>`:""}</h3>
+        ${objektFotos.filter(f=>f.damage).length?`<span class="badge warn">${objektFotos.filter(f=>f.damage).length} als Nachweis</span>`:""}
+      </div>
+      <div class="small muted" style="margin-bottom:10px">
+        Ordne jedem Foto einen Raum zu, zum Beispiel Keller oder Bad. Bei Feuchtigkeit oder Schimmel als Nachweis markieren.
+      </div>
+      <div class="grid g2">
+        <div class="field" style="margin-bottom:8px">
+          <label>Raum oder Ort</label>
+          <input id="foto-raum" list="foto-raum-liste" placeholder="z. B. Keller, Bad, Fassade">
+          <datalist id="foto-raum-liste">${
+            [...new Set(objektFotos.map(f=>f.room).filter(Boolean).concat(
+              units.map(u=>u.label),
+              ["Keller","Erdgeschoss","Dachgeschoss","Treppenhaus","Waschküche","Heizraum","Bad","Küche","Fassade","Dach","Hof","Tiefgarage"]))]
+            .map(r=>`<option value="${esc(r)}">`).join("")}</datalist>
+        </div>
+        <div class="field" style="margin-bottom:8px">
+          <label>Bildunterschrift</label>
+          <input id="foto-text" placeholder="z. B. Feuchtigkeit an der Nordwand">
+        </div>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <label class="row xs" style="gap:6px;margin:0">
+          <input type="checkbox" id="foto-schaden" style="width:auto"> Als Nachweis für einen Schaden markieren
+        </label>
+        <div class="spacer"></div>
+        <label class="btn sec sm" style="margin:0">
+          📷 Fotos aufnehmen oder wählen
+          <input type="file" accept="image/*" multiple capture="environment" style="display:none"
+            onchange="objektFotoHochladen(this,'${p.id}')">
+        </label>
+      </div>
+      ${fotoGalerieHtml(objektFotos, p.id)}
+    </div>
 
     <div class="card">
       <div class="row between">
@@ -1573,6 +1611,14 @@ async function loadInspection(id){
   }
   IS.notizen = (await sb.from("inspection_notes").select("*")
     .eq("inspection_id", id).order("created_at")).data || [];
+  /* Fotos, die als Nachweis an einer Notiz hängen */
+  IS.notizFotos = (await sb.from("property_photos").select("*")
+    .eq("inspection_id", id).order("created_at")).data || [];
+  if(IS.notizFotos.length){
+    const {data:sig} = await sb.storage.from("check-fotos")
+      .createSignedUrls(IS.notizFotos.map(f=>f.path), 3600);
+    IS.notizFotos.forEach(f => { f.__url = (sig||[]).find(d=>d.path===f.path)?.signedUrl || null; });
+  }
   /* Eingescannte Papierbögen */
   IS.scanUrls = [];
   const scans = Array.isArray(insp.scan_paths) ? insp.scan_paths : [];
@@ -1992,6 +2038,96 @@ async function saveScanSummary(el){
 }
 
 /* =========================================================
+   FOTOS ZUM OBJEKT, ZUM RAUM UND ALS NACHWEIS
+   ========================================================= */
+async function ladeObjektFotos(propId){
+  const fotos = (await sb.from("property_photos").select("*")
+    .eq("property_id", propId).order("created_at",{ascending:false})).data || [];
+  if(fotos.length){
+    const {data} = await sb.storage.from("check-fotos").createSignedUrls(fotos.map(f=>f.path), 3600);
+    fotos.forEach(f => { f.__url = (data||[]).find(d=>d.path===f.path)?.signedUrl || null; });
+  }
+  return fotos;
+}
+
+/* Lädt ein oder mehrere Fotos hoch. bezug legt fest, woran sie hängen. */
+async function fotosHochladen(input, bezug){
+  const dateien = [...(input.files||[])];
+  if(!dateien.length) return [];
+  toast(`${dateien.length} Foto${dateien.length>1?"s":""} wird hochgeladen …`);
+  const angelegt = [];
+  try{
+    for(const file of dateien){
+      const blob = await resizeImage(file, 1600, .8);
+      const path = `objekt/${bezug.property_id}/${Date.now()}-${Math.random().toString(36).slice(2,7)}.jpg`;
+      const {error} = await sb.storage.from("check-fotos").upload(path, blob, {contentType:"image/jpeg", upsert:true});
+      if(error) throw error;
+      const rec = {
+        property_id: bezug.property_id,
+        unit_id: bezug.unit_id || null,
+        inspection_id: bezug.inspection_id || null,
+        note_id: bezug.note_id || null,
+        room: bezug.room || null,
+        caption: bezug.caption || null,
+        damage: !!bezug.damage,
+        path, created_by: S.user.id
+      };
+      const {data, error:e2} = await sb.from("property_photos").insert(rec).select().single();
+      if(e2) throw e2;
+      angelegt.push(data);
+    }
+    input.value = "";
+    toast(`${angelegt.length} Foto${angelegt.length>1?"s":""} gespeichert ✓`);
+  }catch(err){ toast("Foto-Fehler: "+(err.message||err), 5000); }
+  return angelegt;
+}
+
+async function objektFotoHochladen(input, propId){
+  const raum = (el("foto-raum")?.value || "").trim() || null;
+  const text = (el("foto-text")?.value || "").trim() || null;
+  const schaden = !!el("foto-schaden")?.checked;
+  await fotosHochladen(input, {property_id:propId, room:raum, caption:text, damage:schaden});
+  go("property", {id:propId});
+}
+
+async function objektFotoLoeschen(id, path, propId){
+  if(!confirm("Dieses Foto löschen?")) return;
+  await sb.storage.from("check-fotos").remove([path]);
+  await sb.from("property_photos").delete().eq("id", id);
+  toast("Gelöscht ✓");
+  go("property", {id:propId});
+}
+async function fotoSchadenUmschalten(id, propId){
+  const {data} = await sb.from("property_photos").select("damage").eq("id",id).maybeSingle();
+  await sb.from("property_photos").update({damage: !data?.damage}).eq("id", id);
+  go("property", {id:propId});
+}
+
+/* Fotogalerie, nach Raum gruppiert. */
+function fotoGalerieHtml(fotos, propId){
+  if(!fotos.length) return `<div class="small muted">Noch keine Fotos. Sinnvoll für den Zustand vor Ort und als Nachweis bei Feuchtigkeit oder Schimmel.</div>`;
+  const nachRaum = fotos.reduce((acc,f)=>{ (acc[f.room || "Ohne Raumangabe"] ||= []).push(f); return acc; }, {});
+  return Object.entries(nachRaum).map(([raum, liste])=>`
+    <div class="substep">
+      <h4>${esc(raum)} ${liste.some(f=>f.damage)?'<span class="badge warn xs">Nachweis Schaden</span>':""}</h4>
+      <div class="scan-grid">
+        ${liste.map(f=>`<div class="scan">
+          ${f.__url?`<a href="${f.__url}" target="_blank" rel="noopener"><img src="${f.__url}" alt="${esc(f.caption||raum)}" loading="lazy"></a>`
+                   :`<div class="small muted" style="padding:20px">Bild nicht lesbar</div>`}
+          ${f.caption?`<div class="xs" style="padding:6px 8px 0">${esc(f.caption)}</div>`:""}
+          <div class="row between" style="padding:4px 8px 6px">
+            <span class="xs muted">${f.damage?"🔧 Schaden":fmtDate(String(f.created_at).slice(0,10))}</span>
+            <div class="row" style="gap:2px">
+              <button class="btn ghost sm" title="Als Schaden markieren" onclick="fotoSchadenUmschalten('${f.id}','${propId}')">${f.damage?"🔧":"○"}</button>
+              <button class="btn ghost sm" onclick="objektFotoLoeschen('${f.id}','${f.path}','${propId}')">✕</button>
+            </div>
+          </div>
+        </div>`).join("")}
+      </div>
+    </div>`).join("");
+}
+
+/* =========================================================
    TERMINE UND KALENDER
    Erzeugt eine Termindatei nach iCalendar. Die verstehen Apple, Google,
    Outlook, Microsoft 365 und Android gleichermaßen, ganz ohne Anmeldung.
@@ -2213,6 +2349,29 @@ async function notizSchadenUmschalten(id){
   renderNotizCard();
 }
 
+async function notizFotoHochladen(input, noteId){
+  const n = (IS.notizen||[]).find(x=>x.id===noteId);
+  const neu = await fotosHochladen(input, {
+    property_id: IS.prop.id, inspection_id: IS.insp.id, note_id: noteId,
+    unit_id: IS.insp.unit_id || null, room: n?.room || null,
+    caption: n?.text ? n.text.slice(0,120) : null, damage: !!n?.damage
+  });
+  if(neu.length){
+    const {data:sig} = await sb.storage.from("check-fotos").createSignedUrls(neu.map(f=>f.path), 3600);
+    neu.forEach(f => { f.__url = (sig||[]).find(d=>d.path===f.path)?.signedUrl || null; });
+    IS.notizFotos = (IS.notizFotos||[]).concat(neu);
+    renderNotizCard();
+  }
+}
+async function notizFotoLoeschen(id, path){
+  if(!confirm("Dieses Foto löschen?")) return;
+  await sb.storage.from("check-fotos").remove([path]);
+  await sb.from("property_photos").delete().eq("id", id);
+  IS.notizFotos = (IS.notizFotos||[]).filter(f=>f.id!==id);
+  renderNotizCard();
+  toast("Gelöscht ✓");
+}
+
 function renderNotizCard(){
   const ziel = document.getElementById("notiz-card");
   if(ziel) ziel.outerHTML = notizCardHtml();
@@ -2258,13 +2417,30 @@ function notizCardHtml(){
       Object.entries(notizen.reduce((acc,n)=>{ (acc[n.room||"Ohne Raumangabe"] ||= []).push(n); return acc; },{}))
       .map(([raum, liste])=>`<div class="substep">
         <h4>${esc(raum)} ${liste.some(n=>n.damage)?'<span class="badge warn xs">Schaden</span>':""}</h4>
-        ${liste.map(n=>`<div class="row between" style="align-items:flex-start;gap:8px;margin-bottom:6px">
-          <div class="small" style="flex:1">${n.source==="diktat"?"🎤 ":""}${esc(n.text)}</div>
-          <div class="row" style="gap:4px;flex:none">
-            <button class="btn ghost sm" title="Als Schaden markieren" onclick="notizSchadenUmschalten('${n.id}')">${n.damage?"🔧":"○"}</button>
-            <button class="btn ghost sm" onclick="loescheNotiz('${n.id}')">✕</button>
+        ${liste.map(n=>{
+          const fotos = (IS.notizFotos||[]).filter(f=>f.note_id===n.id);
+          return `<div style="margin-bottom:8px">
+          <div class="row between" style="align-items:flex-start;gap:8px">
+            <div class="small" style="flex:1">${n.source==="diktat"?"🎤 ":""}${esc(n.text)}</div>
+            <div class="row" style="gap:4px;flex:none">
+              <label class="btn ghost sm" title="Foto als Nachweis" style="margin:0;cursor:pointer">📷
+                <input type="file" accept="image/*" multiple capture="environment" style="display:none"
+                  onchange="notizFotoHochladen(this,'${n.id}')">
+              </label>
+              <button class="btn ghost sm" title="Als Schaden markieren" onclick="notizSchadenUmschalten('${n.id}')">${n.damage?"🔧":"○"}</button>
+              <button class="btn ghost sm" onclick="loescheNotiz('${n.id}')">✕</button>
+            </div>
           </div>
-        </div>`).join("")}
+          ${fotos.length?`<div class="scan-grid" style="margin-top:6px">
+            ${fotos.map(f=>`<div class="scan">
+              ${f.__url?`<a href="${f.__url}" target="_blank" rel="noopener"><img src="${f.__url}" alt="Nachweis" loading="lazy"></a>`:""}
+              <div class="row between" style="padding:4px 8px">
+                <span class="xs muted">Nachweis</span>
+                <button class="btn ghost sm" onclick="notizFotoLoeschen('${f.id}','${f.path}')">✕</button>
+              </div>
+            </div>`).join("")}
+          </div>`:""}
+        </div>`;}).join("")}
       </div>`).join("")
     }`:""}
   </div>`;
