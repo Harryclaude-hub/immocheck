@@ -86,6 +86,28 @@ Diese Punkte sind teuer erkauft. Bitte nicht rückgängig machen.
 8. **Schemaänderungen immer auch in `setup.sql`**, idempotent, und die `alter table` erst **nach** dem
    `create table` der betroffenen Tabelle.
 
+## Recht und Assistent
+
+- **Recht** ist ein Nachschlagewerk mit 23 Verweisen (Österreich und Deutschland), Suche über
+  `rechtSuche()` mit Synonymen und Wortstamm. **Es steht bewusst kein Gesetzestext darin**, nur
+  Fundstelle plus Link zur amtlichen Quelle. Das nicht ändern: abgeschriebener Gesetzestext veraltet
+  und wäre in einer App, die Beweiszwecken dient, gefährlich.
+- **Assistent** beantwortet aus den erfassten Daten, deterministisch, ohne KI-Dienst. `@` heftet eine
+  Immobilie an, `ladeObjektKontext()` holt die echten Zahlen.
+
+## Grenzen, die nicht überschritten werden dürfen
+
+Das ist keine Vorsicht um der Vorsicht willen, sondern Haftung.
+
+- **Die App erstellt kein Wertgutachten.** Ein Verkehrswert braucht Marktdaten (Vergleichspreise,
+  Bodenrichtwert, Lage), die hier nicht vorliegen. Der Assistent sagt das ausdrücklich und liefert
+  stattdessen den Zustand als Grundlage. Niemals eine Zahl als Verkehrswert ausgeben.
+- **Die App ist kein Sachverständigengutachten.** In Österreich braucht es dafür allgemein beeidete
+  und gerichtlich zertifizierte Sachverständige, in Deutschland öffentlich bestellte und vereidigte.
+  Was die App liefert, ist eine dokumentierte, datierte, fotogestützte Aufzeichnung, die als
+  Beweismittel dienen kann. Der Unterschied gehört in jeden Text der Oberfläche.
+- **Keine Rechtsberatung.** Der Hinweis im Recht-Bereich muss dort bleiben.
+
 ## Was bewusst nicht automatisch geht
 
 - **Freie Handschrift** wird nicht erkannt. Ziffern in vorgegebenen Kästchen ja, ganze Sätze nein.
