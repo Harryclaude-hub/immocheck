@@ -598,6 +598,31 @@ alter table public.inspection_items add column if not exists options    text[] d
 alter table public.inspection_items add column if not exists value_num  numeric;
 alter table public.inspection_items add column if not exists value_text text;
 
+-- Gesprochene oder getippte Notizen waehrend der Begehung, je Raum
+create table if not exists public.inspection_notes (
+  id uuid primary key default gen_random_uuid(),
+  inspection_id uuid not null references public.inspections(id) on delete cascade,
+  property_id   uuid references public.properties(id) on delete cascade,
+  room text,
+  text text not null,
+  damage boolean not null default false,
+  source text not null default 'getippt' check (source in ('getippt','diktat')),
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists inspection_notes_inspection_idx on public.inspection_notes(inspection_id);
+create index if not exists inspection_notes_property_idx   on public.inspection_notes(property_id, created_at desc);
+
+alter table public.inspection_notes enable row level security;
+drop policy if exists notes_select on public.inspection_notes;
+create policy notes_select on public.inspection_notes for select to authenticated using (public.is_active_user());
+drop policy if exists notes_insert on public.inspection_notes;
+create policy notes_insert on public.inspection_notes for insert to authenticated with check (public.is_active_user());
+drop policy if exists notes_update on public.inspection_notes;
+create policy notes_update on public.inspection_notes for update to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists notes_delete on public.inspection_notes;
+create policy notes_delete on public.inspection_notes for delete to authenticated using (public.is_active_user());
+
 -- Grenzwerte mit in die Begehung kopieren, damit die Auswertung sie kennt
 alter table public.inspection_items add column if not exists min_value numeric;
 alter table public.inspection_items add column if not exists max_value numeric;

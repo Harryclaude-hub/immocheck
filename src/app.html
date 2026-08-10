@@ -89,6 +89,9 @@ main{padding:20px 0 60px}
 .scan img{width:100%;height:190px;object-fit:cover;display:block;cursor:zoom-in}
 .bogen-nr{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:6px;
   background:var(--brand-soft);color:var(--brand-dark);font-size:.72rem;font-weight:800;vertical-align:middle}
+/* Laufendes Diktat */
+.btn.aufnahme{background:var(--bad);color:#fff;border-color:transparent;animation:pulsieren 1.5s ease-in-out infinite}
+@keyframes pulsieren{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{box-shadow:0 0 0 9px rgba(220,38,38,0)}}
 .substep{border-left:3px solid var(--brand-soft);padding-left:12px;margin:14px 0}
 .substep>h4{font-size:.82rem;text-transform:uppercase;letter-spacing:.04em;color:var(--brand);margin:0 0 8px}
 
@@ -876,18 +879,27 @@ async function deleteProperty(id){
 async function viewProperty(){
   const id = S.params.id;
   loading(true);
-  const [pr, un, ins, eig] = await Promise.all([
+  const [pr, un, ins, eig, notiz] = await Promise.all([
     sb.from("properties").select("*").eq("id",id).maybeSingle(),
     sb.from("units").select("*").eq("property_id",id).order("label"),
     sb.from("inspections").select("*").eq("property_id",id).order("inspection_date",{ascending:false}),
-    sb.from("criteria").select("*").eq("property_id",id).eq("active",true).order("sort_order")
+    sb.from("criteria").select("*").eq("property_id",id).eq("active",true).order("sort_order"),
+    sb.from("inspection_notes").select("*").eq("property_id",id).order("created_at",{ascending:false}).limit(40)
   ]);
   const p = pr.data;
   if(!p){ $("#view").innerHTML = '<div class="empty">Immobilie nicht gefunden.</div>'; return; }
   const units = un.data || [];
   const list = ins.data || [];
   const eigene = eig.data || [];
+  const alleNotizen = notiz.data || [];
   const SCOPE_LABEL = {gebaeude:"nur Gebäude", einheit:"nur Wohnung", beide:"Gebäude und Wohnung"};
+
+  /* Letzter Stand: jüngste abgeschlossene Begehung samt gespeicherter Auswertung */
+  const letzte = list.filter(i => i.status === "abgeschlossen")
+    .sort((a,b)=>(b.inspection_date||"").localeCompare(a.inspection_date||""))[0] || null;
+  const letzteAnalyse = letzte && letzte.analysis && typeof letzte.analysis === "object" ? letzte.analysis : null;
+  const letzteNotizen = letzte ? alleNotizen.filter(n => n.inspection_id === letzte.id) : [];
+  const offeneSchaeden = alleNotizen.filter(n => n.damage);
   const done = list.filter(i=>i.status==="abgeschlossen" && i.score!=null);
   const trend = done.slice(0,10).reverse();
   const unitName = uid => (units.find(u=>u.id===uid)||{}).label;
@@ -934,6 +946,34 @@ async function viewProperty(){
       })()}
       ${p.description?`<hr><div class="small">${esc(p.description).replace(/\n/g,"<br>")}</div>`:""}
     </div>
+
+    ${letzte ? `<div class="card">
+      <div class="row between"><h3 style="margin:0">Letzter Stand</h3>
+        ${letzteAnalyse ? `<span class="badge ${AMPEL_TEXT[letzteAnalyse.ampel]||""}">${esc(letzteAnalyse.urteil||"")}</span>` : `<span class="badge">${letzte.score!=null?Number(letzte.score).toFixed(1)+" / 5":"ohne Note"}</span>`}
+      </div>
+      <div class="small muted" style="margin:6px 0 10px">
+        ${esc(letzte.title||"Begehung")} vom ${fmtDate(letzte.inspection_date)}${letzte.inspector_name?", "+esc(letzte.inspector_name):""}
+      </div>
+      ${letzteAnalyse?.empfehlung ? `<div class="small"><strong>Empfehlung:</strong> ${esc(letzteAnalyse.empfehlung)}</div>` : ""}
+      <div class="row" style="margin-top:10px">
+        ${letzte.score!=null?`<span class="badge ${letzte.score>=4?"ok":letzte.score>=3?"warn":"bad"}">Ø ${Number(letzte.score).toFixed(1)} / 5</span>`:""}
+        ${letzte.critical_count?`<span class="badge bad">${letzte.critical_count} kritisch</span>`:""}
+        ${letzte.defect_count?`<span class="badge warn">${letzte.defect_count} Mängel</span>`:""}
+        ${offeneSchaeden.length?`<span class="badge warn">${offeneSchaeden.length} Schadensnotizen</span>`:""}
+      </div>
+      ${letzteNotizen.length?`<hr>
+        <div class="xs muted" style="margin-bottom:6px">Was bei der Begehung gesagt und notiert wurde</div>
+        ${Object.entries(letzteNotizen.slice().reverse().reduce((acc,n)=>{ (acc[n.room||"Ohne Raumangabe"] ||= []).push(n); return acc; },{}))
+          .map(([raum,liste])=>`<div class="substep">
+            <h4>${esc(raum)} ${liste.some(n=>n.damage)?'<span class="badge warn xs">Schaden</span>':""}</h4>
+            ${liste.slice(0,4).map(n=>`<div class="small">${n.source==="diktat"?"🎤 ":""}${esc(n.text)}</div>`).join("")}
+            ${liste.length>4?`<div class="xs muted">und ${liste.length-4} weitere</div>`:""}
+          </div>`).join("")}`:""}
+      <div class="row" style="margin-top:10px">
+        <button class="btn sec sm" onclick="go('inspectionResult',{id:'${letzte.id}'})">Ergebnis ansehen</button>
+        <button class="btn sec sm" onclick="makePdf('${letzte.id}')">PDF</button>
+      </div>
+    </div>` : ""}
 
     ${(() => {
       const ebenen = [
@@ -1381,6 +1421,8 @@ async function loadInspection(id){
     const {data} = await sb.storage.from("check-fotos").createSignedUrls(paths, 3600);
     (data||[]).forEach(d => { if(d.signedUrl) IS.photoUrls[d.path] = d.signedUrl; });
   }
+  IS.notizen = (await sb.from("inspection_notes").select("*")
+    .eq("inspection_id", id).order("created_at")).data || [];
   /* Eingescannte Papierbögen */
   IS.scanUrls = [];
   const scans = Array.isArray(insp.scan_paths) ? insp.scan_paths : [];
@@ -1449,6 +1491,8 @@ function renderInspection(){
         <textarea id="gen-notes" onchange="saveInspField('general_notes', this.value)" placeholder="Beobachtungen, Gesprächsinhalte, Besonderheiten …">${esc(insp.general_notes||"")}</textarea>
       </div>
     </div>
+
+    ${notizCardHtml()}
 
     ${scanCardHtml()}
 
@@ -1797,6 +1841,148 @@ async function saveScanSummary(el){
   toast("Zusammenfassung gespeichert ✓");
 }
 
+/* =========================================================
+   NOTIZEN UND DIKTAT WÄHREND DER BEGEHUNG
+   ========================================================= */
+const SCHADEN_WOERTER = ["schaden","schäden","riss","risse","schimmel","feucht","nass","undicht",
+  "wasserschaden","kaputt","defekt","gebrochen","locker","rost","fleck","tropft","leck","bruch",
+  "abgeplatzt","verstopft","morsch","verzogen","wackelt","fehlt"];
+function istSchaden(t){
+  const s = String(t||"").toLowerCase();
+  return SCHADEN_WOERTER.some(w => s.includes(w));
+}
+
+let DIKTAT = null;
+function diktatVerfuegbar(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
+
+function diktatUmschalten(){
+  if(DIKTAT){ stopDiktat(); return; }
+  const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!R){ toast("Dieser Browser kann kein Diktat. Tippen funktioniert weiterhin.", 5000); return; }
+  const r = new R();
+  r.lang = "de-DE"; r.continuous = true; r.interimResults = true;
+  let fest = (el("notiz-text")?.value || "");
+  if(fest && !fest.endsWith(" ")) fest += " ";
+  r.onresult = e => {
+    let vorlaeufig = "";
+    for(let i=e.resultIndex; i<e.results.length; i++){
+      const t = e.results[i][0].transcript;
+      if(e.results[i].isFinal) fest += t + " "; else vorlaeufig += t;
+    }
+    const feld = el("notiz-text");
+    if(feld) feld.value = (fest + vorlaeufig).replace(/\s+/g," ").trimStart();
+  };
+  r.onerror = e => {
+    toast("Diktat: " + (e.error==="not-allowed" ? "Mikrofon nicht freigegeben"
+          : e.error==="no-speech" ? "nichts gehört" : e.error), 4000);
+    if(e.error === "not-allowed") stopDiktat();
+  };
+  r.onend = () => { if(DIKTAT === r){ try{ r.start(); }catch(e){} } };   // läuft weiter, bis du beendest
+  DIKTAT = r;
+  try{ r.start(); }catch(e){}
+  const b = el("diktat-btn");
+  if(b){ b.classList.add("aufnahme"); b.innerHTML = "⏹ Diktat beenden"; }
+  toast("Diktat läuft, sprich einfach los.");
+}
+function stopDiktat(){
+  const r = DIKTAT; DIKTAT = null;
+  if(r){ try{ r.onend = null; r.stop(); }catch(e){} }
+  const b = el("diktat-btn");
+  if(b){ b.classList.remove("aufnahme"); b.innerHTML = "🎤 Diktat starten"; }
+}
+
+async function speichereNotiz(){
+  const feld = el("notiz-text"), raumFeld = el("notiz-raum");
+  const text = (feld?.value || "").trim();
+  if(!text){ toast("Es ist noch nichts aufgeschrieben.", 3000); return; }
+  const rec = {
+    inspection_id: IS.insp.id, property_id: IS.prop.id,
+    room: (raumFeld?.value || "").trim() || null,
+    text, damage: istSchaden(text),
+    source: DIKTAT ? "diktat" : (IS.letzteQuelle || "getippt"),
+    created_by: S.user.id
+  };
+  const {data, error} = await sb.from("inspection_notes").insert(rec).select().single();
+  if(error){ toast("Fehler: "+error.message, 4000); return; }
+  IS.notizen = (IS.notizen||[]).concat([data]);
+  if(feld) feld.value = "";
+  IS.letzteQuelle = "getippt";
+  renderNotizCard();
+  toast(rec.damage ? "Notiz gespeichert, als Schaden markiert ✓" : "Notiz gespeichert ✓");
+}
+
+async function loescheNotiz(id){
+  if(!confirm("Diese Notiz löschen?")) return;
+  await sb.from("inspection_notes").delete().eq("id", id);
+  IS.notizen = (IS.notizen||[]).filter(n => n.id !== id);
+  renderNotizCard();
+}
+async function notizSchadenUmschalten(id){
+  const n = (IS.notizen||[]).find(x=>x.id===id);
+  if(!n) return;
+  const {error} = await sb.from("inspection_notes").update({damage: !n.damage}).eq("id", id);
+  if(error){ toast("Fehler: "+error.message, 4000); return; }
+  n.damage = !n.damage;
+  renderNotizCard();
+}
+
+function renderNotizCard(){
+  const ziel = document.getElementById("notiz-card");
+  if(ziel) ziel.outerHTML = notizCardHtml();
+}
+
+function notizCardHtml(){
+  const notizen = (IS.notizen||[]).slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
+  const raeume = [...new Set(notizen.map(n=>n.room).filter(Boolean))];
+  const vorschlaege = [...new Set(raeume.concat(
+    ["Keller","Erdgeschoss","Dachgeschoss","Treppenhaus","Waschküche","Heizraum","Bad","Küche","Wohnzimmer","Schlafzimmer","Flur","Hof","Fassade","Dach","Tiefgarage"]))];
+  const schaeden = notizen.filter(n=>n.damage).length;
+
+  return `<div class="card" id="notiz-card">
+    <div class="row between"><h3 style="margin:0">Notizen und Diktat ${notizen.length?`<span class="badge brand">${notizen.length}</span>`:""}</h3>
+      ${schaeden?`<span class="badge warn">${schaeden} als Schaden markiert</span>`:""}</div>
+    <div class="small muted" style="margin-bottom:10px">
+      Sag oder schreib, in welchem Raum du bist und was dir auffällt. Alles landet in der Zusammenfassung und im Protokoll.
+    </div>
+
+    <div class="grid g2">
+      <div class="field" style="margin-bottom:8px">
+        <label>Raum oder Ort</label>
+        <input id="notiz-raum" list="raum-liste" placeholder="z. B. Keller, Bad, Treppenhaus">
+        <datalist id="raum-liste">${vorschlaege.map(r=>`<option value="${esc(r)}">`).join("")}</datalist>
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <label>&nbsp;</label>
+        <button id="diktat-btn" class="btn ${diktatVerfuegbar()?"sec":"sec"} full" onclick="diktatUmschalten()"
+          ${diktatVerfuegbar()?"":"disabled title='Dieser Browser kann kein Diktat'"}>🎤 Diktat starten</button>
+      </div>
+    </div>
+    <div class="field">
+      <textarea id="notiz-text" rows="3" placeholder="Was fällt dir auf? Beim Diktat erscheint der Text hier."></textarea>
+    </div>
+    <div class="row">
+      <div class="xs muted" style="flex:1">${diktatVerfuegbar()
+        ? "Beim Diktat wandelt dein Browser die Sprache in Text um. Das läuft über den Sprachdienst deines Browsers, also nicht auf dem Gerät selbst."
+        : "Diktat geht in diesem Browser nicht. Nimm Chrome, Edge oder Safari, oder tippe einfach."}</div>
+      <button class="btn" onclick="speichereNotiz()">Notiz sichern</button>
+    </div>
+
+    ${notizen.length?`<hr>${
+      Object.entries(notizen.reduce((acc,n)=>{ (acc[n.room||"Ohne Raumangabe"] ||= []).push(n); return acc; },{}))
+      .map(([raum, liste])=>`<div class="substep">
+        <h4>${esc(raum)} ${liste.some(n=>n.damage)?'<span class="badge warn xs">Schaden</span>':""}</h4>
+        ${liste.map(n=>`<div class="row between" style="align-items:flex-start;gap:8px;margin-bottom:6px">
+          <div class="small" style="flex:1">${n.source==="diktat"?"🎤 ":""}${esc(n.text)}</div>
+          <div class="row" style="gap:4px;flex:none">
+            <button class="btn ghost sm" title="Als Schaden markieren" onclick="notizSchadenUmschalten('${n.id}')">${n.damage?"🔧":"○"}</button>
+            <button class="btn ghost sm" onclick="loescheNotiz('${n.id}')">✕</button>
+          </div>
+        </div>`).join("")}
+      </div>`).join("")
+    }`:""}
+  </div>`;
+}
+
 /* Zeichnet die Papierbogen-Karte neu, ohne die ganze Begehung neu aufzubauen. */
 function renderScanCard(){
   const ziel = document.getElementById("scan-card");
@@ -1971,10 +2157,11 @@ async function finishInspection(){
    Regelbasiert. Jede Aussage lässt sich auf konkrete Prüfpunkte zurückführen,
    es wird nichts geschätzt und nichts geraten.
    ========================================================= */
-function analysiere(insp, prop, items, historie){
+function analysiere(insp, prop, items, historie, notizen){
   const aktiv = aktiveItems(items);
   const st = itemStats(aktiv);
   const befunde = [];
+  const notiz = notizen || IS.notizen || [];
   const nenne = liste => liste.slice(0,6).map(i=>i.criterion_name)
     .concat(liste.length>6 ? [`und ${liste.length-6} weitere`] : []);
 
@@ -2010,6 +2197,17 @@ function analysiere(insp, prop, items, historie){
     titel:`${ueberfaellig.length} Frist${ueberfaellig.length===1?"":"en"} überschritten`,
     text:"Für diese Mängel ist die eingetragene Frist bereits verstrichen.",
     punkte:nenne(ueberfaellig)});
+
+  /* 4b. Was vor Ort gesagt oder notiert wurde */
+  const schadenNotizen = notiz.filter(n => n.damage);
+  if(schadenNotizen.length){
+    const raeume = [...new Set(schadenNotizen.map(n => n.room || "ohne Raumangabe"))];
+    befunde.push({stufe:"warnung",
+      titel:`${schadenNotizen.length} Schadensmeldung${schadenNotizen.length===1?"":"en"} aus der Begehung`,
+      text:`Vor Ort festgehalten in: ${raeume.join(", ")}.`,
+      punkte: schadenNotizen.slice(0,6).map(n => `${n.room?n.room+": ":""}${n.text}`)
+        .concat(schadenNotizen.length>6 ? [`und ${schadenNotizen.length-6} weitere`] : [])});
+  }
 
   /* 5. Unvollständigkeit, das schränkt die Aussagekraft ein */
   const offen = aktiv.filter(i => !i.presence || i.presence==="offen");
@@ -2054,7 +2252,7 @@ function analysiere(insp, prop, items, historie){
     ampel = "gelb";
     urteil = "Für ein Urteil wurde zu wenig geprüft";
     empfehlung = `Erst ${offen.length} von ${aktiv.length} Punkten sind unbearbeitet. Die Begehung sollte vervollständigt werden, bevor eine Aussage möglich ist.`;
-  } else if(ausReisser.length || schlecht.length >= 3 || ueberfaellig.length || (st.score!=null && st.score < 3)){
+  } else if(ausReisser.length || schlecht.length >= 3 || ueberfaellig.length || schadenNotizen.length || (st.score!=null && st.score < 3)){
     ampel = "gelb";
     urteil = "Mängel vorhanden, keine unmittelbare Gefahr";
     empfehlung = "Die aufgeführten Punkte einplanen und mit Fristen versehen.";
@@ -2073,7 +2271,8 @@ function analysiere(insp, prop, items, historie){
 
   return {ampel, urteil, empfehlung, trend, befunde,
     zahlen:{gesamt:aktiv.length, bearbeitet:st.answered.length, note:st.score!=null?+st.score.toFixed(2):null,
-            maengel:st.defects.length, kritisch:sicherheit.length, messwertAusreisser:ausReisser.length}};
+            maengel:st.defects.length, kritisch:sicherheit.length, messwertAusreisser:ausReisser.length,
+            notizen:notiz.length, schadensnotizen:schadenNotizen.length}};
 }
 
 const AMPEL_FARBE = {rot:[220,38,38], gelb:[234,179,8], gruen:[22,163,74]};
@@ -2142,6 +2341,15 @@ async function viewInspectionResult(){
     </div>
 
     ${analyseKarte(analyse)}
+
+    ${(IS.notizen||[]).length?`<div class="card">
+      <h3>Notizen aus der Begehung (${IS.notizen.length})</h3>
+      ${Object.entries((IS.notizen||[]).reduce((acc,n)=>{ (acc[n.room||"Ohne Raumangabe"] ||= []).push(n); return acc; },{}))
+        .map(([raum,liste])=>`<div class="substep">
+          <h4>${esc(raum)} ${liste.some(n=>n.damage)?'<span class="badge warn xs">Schaden</span>':""}</h4>
+          ${liste.map(n=>`<div class="small">${n.source==="diktat"?"🎤 ":""}${esc(n.text)}</div>`).join("")}
+        </div>`).join("")}
+    </div>`:""}
 
     ${maengel.length?`<div class="card">
       <h3>Maßnahmen und Auffälligkeiten (${maengel.length})</h3>
@@ -2925,6 +3133,31 @@ async function makePdf(id){
           if(d.section==="body" && d.column.index===0){
             const s = a.befunde[d.row.index].stufe;
             d.cell.styles.textColor = s==="kritisch" ? [185,28,28] : s==="warnung" ? [180,83,9] : s==="gut" ? [21,128,61] : [100,116,139];
+          }
+        }
+      });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    /* Notizen und Diktat aus der Begehung, nach Raum geordnet */
+    const notizen = IS.notizen || [];
+    if(notizen.length){
+      if(y > 230){ doc.addPage(); y = 18; }
+      doc.setFont("helvetica","bold"); doc.setFontSize(10);
+      doc.text(`Notizen aus der Begehung (${notizen.length})`, M, y); y += 2;
+      const nachRaum = notizen.reduce((acc,n)=>{ (acc[n.room||"Ohne Raumangabe"] ||= []).push(n); return acc; }, {});
+      doc.autoTable({
+        startY: y+2,
+        head: [["Raum","Notiz","Art"]],
+        body: Object.entries(nachRaum).flatMap(([raum, liste]) =>
+          liste.map((n,k) => [k===0 ? raum : "", n.text, n.damage ? "Schaden" : (n.source==="diktat" ? "Diktat" : "Notiz")])),
+        styles:{fontSize:8, cellPadding:1.7, overflow:"linebreak"},
+        headStyles:{fillColor:[226,232,240], textColor:[51,65,85], fontSize:8},
+        columnStyles:{0:{cellWidth:32, fontStyle:"bold"}, 1:{cellWidth:"auto"}, 2:{cellWidth:20, halign:"center"}},
+        margin:{left:M, right:M},
+        didParseCell: d => {
+          if(d.section==="body" && d.column.index===2 && d.cell.raw==="Schaden"){
+            d.cell.styles.textColor = [185,28,28]; d.cell.styles.fontStyle = "bold";
           }
         }
       });
