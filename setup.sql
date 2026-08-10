@@ -573,6 +573,9 @@ create index if not exists criteria_property_id_idx on public.criteria(property_
 alter table public.inspections add column if not exists scan_paths   text[] default '{}';
 alter table public.inspections add column if not exists scan_summary text;
 
+-- Geometrie des gedruckten Bogens: wo liegt welches Ankreuzkaestchen.
+alter table public.inspections add column if not exists sheet_layout jsonb;
+
 alter table public.templates enable row level security;
 alter table public.template_criteria enable row level security;
 

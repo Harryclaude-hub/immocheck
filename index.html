@@ -2140,6 +2140,11 @@ function scanCardHtml(){
       <input type="file" accept="image/*" multiple capture="environment" style="display:none" onchange="uploadScan(this)">
     </label>
 
+    ${scans.length ? `<button class="btn full" style="margin-top:8px" onclick="leseScans()">🔍 Kreuze automatisch auslesen</button>
+      <div class="xs muted" style="margin-top:5px">
+        Läuft direkt auf deinem Gerät, das Foto wird dafür nirgendwohin geschickt. Das Ergebnis kannst du vor dem Übernehmen prüfen.
+      </div>` : ""}
+
     <div class="field" style="margin-top:14px">
       <label>Handschriftliche Anmerkungen als Text</label>
       <textarea id="scan-summary" rows="4" placeholder="Was auf dem Bogen handschriftlich steht, hier eintippen. Landet im Protokoll."
@@ -2396,6 +2401,267 @@ async function reopenInspection(id){
 const PRES_TXT = {vorhanden:"Vorhanden / OK", nicht_vorhanden:"NICHT vorhanden", nicht_relevant:"Nicht relevant", offen:"Offen"};
 const RATE_TXT = {1:"Sehr schlecht",2:"Schlecht",3:"Mittel",4:"Gut",5:"Sehr gut"};
 
+/* =========================================================
+   PAPIERBOGEN MASCHINELL AUSLESEN
+   Läuft vollständig im Browser. Es wird kein Bild verschickt.
+   ========================================================= */
+
+/* Bild in ein Canvas laden, dabei auf eine verarbeitbare Größe bringen. */
+function bildInCanvas(url, maxKante = 1600){
+  return new Promise((ok, fehler) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const s = Math.min(1, maxKante / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      ok(c);
+    };
+    img.onerror = () => fehler(new Error("Bild konnte nicht geladen werden"));
+    img.src = url;
+  });
+}
+
+/* Schwarzweiß-Maske über die Otsu-Schwelle. 1 bedeutet dunkel. */
+function dunkelMaske(canvas){
+  const w = canvas.width, h = canvas.height;
+  const d = canvas.getContext("2d").getImageData(0,0,w,h).data;
+  const grau = new Uint8Array(w*h), hist = new Int32Array(256);
+  for(let i=0, p=0; p<w*h; i+=4, p++){
+    const g = (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114) | 0;
+    grau[p] = g; hist[g]++;
+  }
+  const N = w*h;
+  let gesamt = 0; for(let t=0;t<256;t++) gesamt += t*hist[t];
+  let sumB = 0, wB = 0, best = -1, schwelle = 128;
+  for(let t=0;t<256;t++){
+    wB += hist[t]; if(!wB) continue;
+    const wF = N - wB; if(!wF) break;
+    sumB += t*hist[t];
+    const mB = sumB/wB, mF = (gesamt-sumB)/wF;
+    const z = wB*wF*(mB-mF)*(mB-mF);
+    if(z > best){ best = z; schwelle = t; }
+  }
+  const maske = new Uint8Array(w*h);
+  for(let p=0;p<N;p++) maske[p] = grau[p] < schwelle ? 1 : 0;
+  return {maske, w, h};
+}
+
+/* Integralbild, damit Fenstersummen in konstanter Zeit gehen. */
+function integralBild(maske, w, h){
+  const I = new Int32Array((w+1)*(h+1));
+  for(let y=0;y<h;y++){
+    let zeile = 0;
+    for(let x=0;x<w;x++){
+      zeile += maske[y*w+x];
+      I[(y+1)*(w+1)+(x+1)] = I[y*(w+1)+(x+1)] + zeile;
+    }
+  }
+  return I;
+}
+function fensterSumme(I, w, x0, y0, x1, y1){
+  const W1 = w+1;
+  return I[y1*W1+x1] - I[y0*W1+x1] - I[y1*W1+x0] + I[y0*W1+x0];
+}
+
+/* Sucht in einem Bildausschnitt die volle schwarze Passermarke. */
+function findeMarke(I, w, h, bereich, seitePx){
+  const s = Math.max(5, Math.round(seitePx));
+  const ring = Math.max(3, Math.round(s*0.7));
+  const schritt = Math.max(1, Math.round(s/6));
+  let best = -1, bx = 0, by = 0;
+  for(let y=bereich.y0; y+s<=bereich.y1; y+=schritt){
+    for(let x=bereich.x0; x+s<=bereich.x1; x+=schritt){
+      const innenSumme = fensterSumme(I,w,x,y,x+s,y+s);
+      const innen = innenSumme/(s*s);
+      if(innen < 0.6) continue;                       // Marke ist nahezu voll schwarz
+      const ax0 = Math.max(0,x-ring), ay0 = Math.max(0,y-ring);
+      const ax1 = Math.min(w,x+s+ring), ay1 = Math.min(h,y+s+ring);
+      const flaeche = (ax1-ax0)*(ay1-ay0) - s*s;
+      const aussen = flaeche > 0 ? (fensterSumme(I,w,ax0,ay0,ax1,ay1) - innenSumme)/flaeche : 1;
+      const z = innen - aussen;                       // innen voll, ringsum hell
+      if(z > best){ best = z; bx = x; by = y; }
+    }
+  }
+  return best < 0.3 ? null : {x: bx + s/2, y: by + s/2, guete: +best.toFixed(3)};
+}
+
+/* Lineares Gleichungssystem per Gauß mit Spaltenpivot. */
+function loeseLGS(A, b){
+  const n = b.length;
+  const M = A.map((r,i) => r.concat([b[i]]));
+  for(let c=0;c<n;c++){
+    let p = c;
+    for(let r=c+1;r<n;r++) if(Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if(Math.abs(M[p][c]) < 1e-9) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for(let r=0;r<n;r++){
+      if(r === c) continue;
+      const f = M[r][c]/M[c][c];
+      for(let k=c;k<=n;k++) M[r][k] -= f*M[c][k];
+    }
+  }
+  return M.map((r,i) => r[n]/M[i][i]);
+}
+
+/* Homographie, die Millimeter auf dem Bogen zu Pixeln im Foto macht. */
+function homographie(mm, px){
+  const A = [], b = [];
+  for(let i=0;i<4;i++){
+    const X = mm[i].x, Y = mm[i].y, u = px[i].x, v = px[i].y;
+    A.push([X,Y,1,0,0,0,-X*u,-Y*u]); b.push(u);
+    A.push([0,0,0,X,Y,1,-X*v,-Y*v]); b.push(v);
+  }
+  const h = loeseLGS(A, b);
+  return h ? h.concat([1]) : null;
+}
+function abbilden(H, X, Y){
+  const n = H[6]*X + H[7]*Y + H[8];
+  return {x:(H[0]*X + H[1]*Y + H[2])/n, y:(H[3]*X + H[4]*Y + H[5])/n};
+}
+
+/* Liest eine Bogenseite aus einem Foto. Gibt je Zeilennummer den erkannten Wert zurück. */
+async function leseBogenSeite(url, layout, seite){
+  const canvas = await bildInCanvas(url, 1600);
+  const {maske, w, h} = dunkelMaske(canvas);
+  const I = integralBild(maske, w, h);
+
+  const markePx = (layout.markeMm / layout.seite.w) * w;
+  const bereiche = [
+    {x0:0,               y0:0,               x1:Math.round(w*0.42), y1:Math.round(h*0.45)},
+    {x0:Math.round(w*0.58), y0:0,            x1:w,                  y1:Math.round(h*0.45)},
+    {x0:0,               y0:Math.round(h*0.55), x1:Math.round(w*0.42), y1:h},
+    {x0:Math.round(w*0.58), y0:Math.round(h*0.55), x1:w,             y1:h}
+  ];
+  const gefunden = bereiche.map(b => findeMarke(I, w, h, b, markePx));
+  if(gefunden.some(m => !m)){
+    return {fehler:"Die vier Ecken des Bogens sind nicht erkennbar. Bitte den ganzen Bogen flach und gut ausgeleuchtet fotografieren."};
+  }
+  const H = homographie(layout.marken, gefunden);
+  if(!H) return {fehler:"Die Lage des Bogens ließ sich nicht berechnen."};
+
+  const tinte = {};
+  layout.kaesten.filter(k => k.seite === seite).forEach(k => {
+    const fx = 0.26, fy = 0.22;                    // nur der innere Teil, ohne Rahmenlinien
+    const ecken = [
+      abbilden(H, k.x + k.w*fx,     k.y + k.h*fy),
+      abbilden(H, k.x + k.w*(1-fx), k.y + k.h*fy),
+      abbilden(H, k.x + k.w*(1-fx), k.y + k.h*(1-fy)),
+      abbilden(H, k.x + k.w*fx,     k.y + k.h*(1-fy))
+    ];
+    const x0 = Math.max(0, Math.floor(Math.min(...ecken.map(p=>p.x))));
+    const x1 = Math.min(w, Math.ceil (Math.max(...ecken.map(p=>p.x))));
+    const y0 = Math.max(0, Math.floor(Math.min(...ecken.map(p=>p.y))));
+    const y1 = Math.min(h, Math.ceil (Math.max(...ecken.map(p=>p.y))));
+    const flaeche = (x1-x0)*(y1-y0);
+    const anteil = flaeche > 4 ? fensterSumme(I,w,x0,y0,x1,y1)/flaeche : 0;
+    (tinte[k.nr] = tinte[k.nr] || {})[k.wert] = anteil;
+  });
+
+  const zeilen = Object.entries(tinte).map(([nr, t]) => {
+    const sortiert = Object.entries(t).sort((a,b) => b[1]-a[1]);
+    const [wert, beste] = sortiert[0];
+    const zweite = sortiert[1] ? sortiert[1][1] : 0;
+    let status;
+    if(beste < 0.10)                        status = "leer";
+    else if(beste < 0.18 || beste < zweite*1.7) status = "unsicher";
+    else                                    status = "sicher";
+    return {nr:Number(nr), wert, status, tinte:+beste.toFixed(3), zweite:+zweite.toFixed(3)};
+  }).sort((a,b) => a.nr - b.nr);
+
+  return {zeilen, marken:gefunden};
+}
+
+/* Liest alle hochgeladenen Seiten und zeigt das Ergebnis zur Kontrolle. */
+async function leseScans(){
+  const insp = IS.insp;
+  const layout = insp.sheet_layout;
+  if(!layout || !layout.kaesten?.length){
+    toast("Für diese Begehung wurde noch kein Bogen gedruckt. Bitte zuerst den Bogen drucken.", 5000); return;
+  }
+  if(!IS.scanUrls.length){ toast("Es ist noch kein Foto des Bogens hochgeladen.", 4000); return; }
+
+  toast("Bogen wird ausgelesen …");
+  const alle = [];
+  const probleme = [];
+  for(let i=0;i<IS.scanUrls.length;i++){
+    const s = IS.scanUrls[i];
+    if(!s.url) continue;
+    try{
+      const r = await leseBogenSeite(s.url, layout, i+1);
+      if(r.fehler) probleme.push(`Seite ${i+1}: ${r.fehler}`);
+      else alle.push(...r.zeilen);
+    }catch(e){ probleme.push(`Seite ${i+1}: ${e.message}`); }
+  }
+  if(!alle.length){
+    toast("Nichts erkannt", 2000);
+    openModal(`<h2>Auslesen nicht möglich</h2>
+      <div class="small">${probleme.map(p=>esc(p)).join("<br>")||"Keine auswertbare Seite gefunden."}</div>
+      <div class="small muted" style="margin-top:12px">Tipp: Der ganze Bogen muss im Bild sein, samt der vier schwarzen Ecken. Gleichmäßiges Licht, keine Schatten, möglichst von oben.</div>
+      <div class="row" style="margin-top:14px"><div class="spacer"></div><button class="btn" onclick="closeModal()">Schließen</button></div>`);
+    return;
+  }
+  zeigeLeseErgebnis(alle, probleme);
+}
+
+function zeigeLeseErgebnis(zeilen, probleme){
+  const nachNr = {};
+  aktiveItems(IS.items).forEach(i => { if(i.__nr) nachNr[i.__nr] = i; });
+  const erkannt = zeilen.filter(z => z.status !== "leer");
+  const auswahl = z => {
+    const opts = [["","– nichts –"],["1","1"],["2","2"],["3","3"],["4","4"],["5","5"],["nv","nicht vorhanden"]];
+    return `<select data-nr="${z.nr}" class="lese-wahl">
+      ${opts.map(([v,l])=>`<option value="${v}" ${(z.status==="leer"?"":z.wert)===v?"selected":""}>${l}</option>`).join("")}
+    </select>`;
+  };
+  openModal(`
+    <h2>Erkannte Kreuze</h2>
+    <div class="small muted" style="margin:-8px 0 12px">
+      ${erkannt.filter(z=>z.status==="sicher").length} sicher erkannt,
+      ${erkannt.filter(z=>z.status==="unsicher").length} unsicher,
+      ${zeilen.length - erkannt.length} ohne Kreuz.
+      Bitte kurz prüfen und dann übernehmen.
+    </div>
+    ${probleme.length?`<div class="small" style="color:var(--bad);margin-bottom:10px">${probleme.map(esc).join("<br>")}</div>`:""}
+    <div style="max-height:46dvh;overflow:auto;margin-bottom:12px">
+      <table class="t"><thead><tr><th>Nr</th><th>Prüfpunkt</th><th>Erkannt</th></tr></thead><tbody>
+      ${zeilen.map(z=>`<tr>
+        <td class="mono">${z.nr}</td>
+        <td class="small">${esc(nachNr[z.nr]?.criterion_name || "unbekannt")}
+          ${z.status==="unsicher"?'<span class="badge warn xs">unsicher</span>':""}</td>
+        <td>${auswahl(z)}</td>
+      </tr>`).join("")}
+      </tbody></table>
+    </div>
+    <div class="row">
+      <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+      <div class="spacer"></div>
+      <button class="btn" onclick="uebernehmeLeseErgebnis()">Übernehmen</button>
+    </div>`);
+}
+
+async function uebernehmeLeseErgebnis(){
+  const wahlen = [...document.querySelectorAll(".lese-wahl")];
+  const nachNr = {};
+  aktiveItems(IS.items).forEach(i => { if(i.__nr) nachNr[i.__nr] = i; });
+  let gesetzt = 0;
+  for(const sel of wahlen){
+    const wert = sel.value;
+    if(!wert) continue;
+    const it = nachNr[Number(sel.dataset.nr)];
+    if(!it) continue;
+    const patch = wert === "nv"
+      ? {presence:"nicht_vorhanden", rating:null}
+      : {rating:Number(wert), presence:"vorhanden"};
+    await saveItem(it.id, patch);
+    gesetzt++;
+  }
+  closeModal();
+  toast(`${gesetzt} Bewertung${gesetzt===1?"":"en"} übernommen ✓`);
+  renderInspection();
+}
+
 /* Leerer Bogen zum Ausdrucken und mit dem Stift ausfüllen.
    Die Nummern entsprechen exakt denen in der Übertragen-Ansicht. */
 async function makePaperSheet(id){
@@ -2409,7 +2675,12 @@ async function makePaperSheet(id){
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"mm", format:"a4"});
     const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
     const M = 12;
+    /* Passermarken in den Aussenrand, damit ein schiefes Foto zurechtgerechnet werden kann.
+       Reihenfolge fest: oben links, oben rechts, unten links, unten rechts. */
+    const MARK = 6;
+    const MARKEN = [{x:7, y:36}, {x:W-7, y:36}, {x:7, y:H-7}, {x:W-7, y:H-7}];
 
     doc.setFillColor(29,78,216); doc.rect(0,0,W,28,"F");
     doc.setFillColor(220,38,38); doc.rect(0,28,W,1.6,"F");
@@ -2448,8 +2719,23 @@ async function makePaperSheet(id){
       else bereiche.push({name: it.category_name, items:[it]});
     });
 
+    /* Geometrie mitschreiben, damit ein Foto des Bogens später ausgelesen werden kann */
+    const layout = {version:1, seite:{w:W, h:H}, marken:MARKEN, markeMm:MARK, kaesten:[]};
+    const spalteWert = {2:"1", 3:"2", 4:"3", 5:"4", 6:"5", 7:"nv"};
+
     bereiche.forEach(b => {
       doc.autoTable({
+        didDrawCell: d => {
+          if(d.section !== "body") return;
+          const wert = spalteWert[d.column.index];
+          if(!wert) return;
+          layout.kaesten.push({
+            nr: Number(d.row.raw[0]), wert,
+            seite: doc.internal.getCurrentPageInfo().pageNumber,
+            x: +d.cell.x.toFixed(2), y: +d.cell.y.toFixed(2),
+            w: +d.cell.width.toFixed(2), h: +d.cell.height.toFixed(2)
+          });
+        },
         startY: y,
         head: [[{content:b.name, colSpan:9, styles:{halign:"left", fillColor:[219,234,254], textColor:[29,78,216], fontStyle:"bold", fontSize:9}}],
                ["Nr", "Prüfpunkt", "1","2","3","4","5","n.v.","Notiz"]],
@@ -2490,8 +2776,19 @@ async function makePaperSheet(id){
     for(let s=1;s<=seiten;s++){
       doc.setPage(s);
       doc.setFontSize(7); doc.setTextColor(148,163,184);
-      doc.text(`ImmoCheck · Bogen-Kennung ${id.slice(0,8)} · Seite ${s} von ${seiten}`, M, doc.internal.pageSize.getHeight()-7);
+      doc.text(`ImmoCheck · Bogen-Kennung ${id.slice(0,8)} · Seite ${s} von ${seiten}`, M, H-7);
+      /* Passermarken zuletzt, damit sie nichts überdeckt */
+      doc.setFillColor(0,0,0);
+      MARKEN.forEach(m => doc.rect(m.x-MARK/2, m.y-MARK/2, MARK, MARK, "F"));
     }
+    layout.seiten = seiten;
+
+    /* Layout merken, damit das Auslesen des Fotos später weiß, wo die Kästchen sind */
+    if(IS.insp && IS.insp.id === id) IS.insp.sheet_layout = layout;
+    try{
+      const {error:eL} = await sb.from("inspections").update({sheet_layout: layout}).eq("id", id);
+      if(eL) toast("Hinweis: Der Bogen ist fertig, das Auslesen später klappt aber nur in dieser Sitzung.", 5000);
+    }catch(e){ /* der gedruckte Bogen bleibt gültig, nur das spätere Auslesen braucht das Layout */ }
 
     const datei = `Begehungsbogen_${(prop.name||"Objekt").replace(/[^\wäöüÄÖÜß -]/g,"").trim().replace(/\s+/g,"_")}_${insp.inspection_date}.pdf`;
     doc.save(datei);
