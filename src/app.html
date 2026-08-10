@@ -879,12 +879,13 @@ async function deleteProperty(id){
 async function viewProperty(){
   const id = S.params.id;
   loading(true);
-  const [pr, un, ins, eig, notiz] = await Promise.all([
+  const [pr, un, ins, eig, notiz, plaene] = await Promise.all([
     sb.from("properties").select("*").eq("id",id).maybeSingle(),
     sb.from("units").select("*").eq("property_id",id).order("label"),
     sb.from("inspections").select("*").eq("property_id",id).order("inspection_date",{ascending:false}),
     sb.from("criteria").select("*").eq("property_id",id).eq("active",true).order("sort_order"),
-    sb.from("inspection_notes").select("*").eq("property_id",id).order("created_at",{ascending:false}).limit(40)
+    sb.from("inspection_notes").select("*").eq("property_id",id).order("created_at",{ascending:false}).limit(40),
+    sb.from("inspection_plans").select("*").eq("property_id",id).eq("active",true).order("start_date")
   ]);
   const p = pr.data;
   if(!p){ $("#view").innerHTML = '<div class="empty">Immobilie nicht gefunden.</div>'; return; }
@@ -900,6 +901,14 @@ async function viewProperty(){
   const letzteAnalyse = letzte && letzte.analysis && typeof letzte.analysis === "object" ? letzte.analysis : null;
   const letzteNotizen = letzte ? alleNotizen.filter(n => n.inspection_id === letzte.id) : [];
   const offeneSchaeden = alleNotizen.filter(n => n.damage);
+
+  /* Termine für die Kalenderknöpfe bereitstellen */
+  IS.plaene = (plaene.data || []).map(pl => ({...pl,
+    __unitLabel: pl.unit_id ? (units.find(u=>u.id===pl.unit_id)||{}).label : null,
+    __naechster: naechsterTermin(pl)
+  })).sort((a,b) => a.__naechster.localeCompare(b.__naechster));
+  IS.planProp = p;
+  const heuteStr = new Date().toISOString().slice(0,10);
   const done = list.filter(i=>i.status==="abgeschlossen" && i.score!=null);
   const trend = done.slice(0,10).reverse();
   const unitName = uid => (units.find(u=>u.id===uid)||{}).label;
@@ -992,6 +1001,33 @@ async function viewProperty(){
         ${p.structure_notes?`<div class="small" style="margin-top:10px">${esc(p.structure_notes).replace(/\n/g,"<br>")}</div>`:""}
       </div>`;
     })()}
+
+    <div class="card">
+      <div class="row between">
+        <h3 style="margin:0">Termine ${IS.plaene.length?`<span class="badge brand">${IS.plaene.length}</span>`:""}</h3>
+        <button class="btn sec sm" onclick="editPlan('${p.id}')">+ Termin</button>
+      </div>
+      <div class="small muted" style="margin-bottom:10px">
+        Lege fest, wann geprüft wird, einmalig oder regelmäßig. Danach in deinen Kalender übernehmen, die Erinnerung kommt automatisch vorher.
+      </div>
+      ${IS.plaene.length ? `<div class="unit-list">
+        ${IS.plaene.map(pl=>{
+          const faellig = pl.__naechster <= heuteStr;
+          return `<div class="unit">
+            <div class="nr">${faellig?"⏰":"📅"}</div>
+            <div class="txt">
+              <strong>${esc(pl.title||"Begehung")}${pl.__unitLabel?" · "+esc(pl.__unitLabel):""}</strong>
+              <small>${fmtDate(pl.__naechster)} um ${esc(pl.start_time)} · ${esc(planText(pl))} · Erinnerung ${pl.reminder_days} Tage vorher
+                ${faellig?' · <span style="color:var(--bad);font-weight:700">fällig</span>':""}</small>
+            </div>
+            <div class="act">
+              <button class="btn ghost sm" title="Bearbeiten" onclick="editPlan('${p.id}','${pl.id}')">✎</button>
+              <button class="btn sec sm" onclick="terminMenue('${pl.id}')">In Kalender</button>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>` : `<div class="small muted">Noch kein Termin geplant. Typisch ist ein Sicherheitscheck alle 6 oder 12 Monate.</div>`}
+    </div>
 
     <div class="card">
       <div class="row between">
@@ -1127,6 +1163,120 @@ async function deleteUnit(unitId, propId){
   if(!confirm("Einheit löschen?")) return;
   await sb.from("units").delete().eq("id",unitId);
   closeModal(); go("property",{id:propId});
+}
+
+/* =========================================================
+   TERMINE ANLEGEN UND IN DEN KALENDER ÜBERNEHMEN
+   ========================================================= */
+async function editPlan(propId, planId){
+  const pl = planId ? (IS.plaene||[]).find(x=>x.id===planId) || {} : {};
+  const einheiten = (await sb.from("units").select("id,label").eq("property_id",propId).order("label")).data || [];
+  const f = (k,d="") => esc(pl[k] ?? d);
+  const heute = new Date().toISOString().slice(0,10);
+  openModal(`
+    <h2>${planId?"Termin bearbeiten":"Neuer Termin"}</h2>
+    <form onsubmit="return savePlan(event,'${propId}',${planId?`'${planId}'`:"null"})">
+      <div class="field"><label>Bezeichnung</label><input name="title" value="${f("title","Begehung")}" placeholder="z. B. Halbjahres-Check"></div>
+      <div class="grid g3">
+        <div class="field"><label>Datum *</label><input name="start_date" type="date" required value="${f("start_date",heute)}"></div>
+        <div class="field"><label>Uhrzeit</label><input name="start_time" type="time" value="${f("start_time","09:00")}"></div>
+        <div class="field"><label>Dauer in Minuten</label><input name="duration_min" type="number" min="15" step="15" value="${f("duration_min","120")}"></div>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>Wiederholung</label>
+          <select name="freq" onchange="planIntervall(this.value)">
+            <option value="einmalig" ${pl.freq==="einmalig"||!pl.freq?"selected":""}>Einmalig</option>
+            <option value="wochen"   ${pl.freq==="wochen"?"selected":""}>Alle X Wochen</option>
+            <option value="monate"   ${pl.freq==="monate"?"selected":""}>Alle X Monate</option>
+            <option value="jahre"    ${pl.freq==="jahre"?"selected":""}>Alle X Jahre</option>
+          </select>
+        </div>
+        <div class="field" id="plan-intervall" style="display:none">
+          <label>Alle wie viel?</label><input name="interval_n" type="number" min="1" max="99" value="${f("interval_n","6")}">
+        </div>
+      </div>
+      <div class="grid g2">
+        <div class="field"><label>Erinnerung, Tage vorher</label><input name="reminder_days" type="number" min="0" max="60" value="${f("reminder_days","3")}"></div>
+        <div class="field"><label>Einheit (optional)</label>
+          <select name="unit_id">
+            <option value="">Gesamtes Gebäude</option>
+            ${einheiten.map(u=>`<option value="${u.id}" ${pl.unit_id===u.id?"selected":""}>${esc(u.label)}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Notiz für den Kalendereintrag</label><textarea name="notes" rows="2" placeholder="Schlüssel bei der Hausverwaltung abholen …">${f("notes")}</textarea></div>
+      <div class="row">
+        <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+        <div class="spacer"></div>
+        ${planId?`<button type="button" class="btn danger sm" onclick="deletePlan('${planId}','${propId}')">Löschen</button>`:""}
+        <button class="btn" type="submit">Speichern</button>
+      </div>
+    </form>`);
+  planIntervall(pl.freq || "einmalig");
+}
+function planIntervall(v){
+  const el2 = document.getElementById("plan-intervall");
+  if(el2) el2.style.display = v === "einmalig" ? "none" : "block";
+}
+
+async function savePlan(ev, propId, planId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const rec = {
+    property_id: propId,
+    unit_id: fd.get("unit_id") || null,
+    title: fd.get("title") || "Begehung",
+    start_date: fd.get("start_date"),
+    start_time: fd.get("start_time") || "09:00",
+    duration_min: Number(fd.get("duration_min")) || 120,
+    freq: fd.get("freq") || "einmalig",
+    interval_n: Math.max(1, Number(fd.get("interval_n")) || 1),
+    reminder_days: Math.max(0, Number(fd.get("reminder_days")) ?? 3),
+    notes: fd.get("notes") || null,
+    active: true
+  };
+  if(!planId) rec.created_by = S.user.id;
+  const {error} = planId
+    ? await sb.from("inspection_plans").update(rec).eq("id", planId)
+    : await sb.from("inspection_plans").insert(rec);
+  if(error){ toast("Fehler: "+error.message, 4000); return false; }
+  closeModal(); toast("Termin gespeichert ✓"); go("property",{id:propId});
+  return false;
+}
+async function deletePlan(planId, propId){
+  if(!confirm("Diesen Termin löschen?")) return;
+  await sb.from("inspection_plans").delete().eq("id", planId);
+  closeModal(); toast("Gelöscht ✓"); go("property",{id:propId});
+}
+
+function terminMenue(planId){
+  const pl = (IS.plaene||[]).find(x=>x.id===planId);
+  if(!pl){ toast("Termin nicht gefunden", 3000); return; }
+  const prop = IS.planProp;
+  openModal(`
+    <h2>In den Kalender übernehmen</h2>
+    <div class="small muted" style="margin:-8px 0 14px">
+      ${esc(pl.title||"Begehung")} · ${fmtDate(pl.__naechster)} um ${esc(pl.start_time)} · ${esc(planText(pl))} · Erinnerung ${pl.reminder_days} Tage vorher
+    </div>
+    <button class="btn full" style="margin-bottom:8px" onclick="terminDatei('${pl.id}')">
+      📅 Termindatei herunterladen
+    </button>
+    <div class="xs muted" style="margin-bottom:14px">
+      Der zuverlässigste Weg, funktioniert mit Apple Kalender, Outlook, Microsoft 365, Android und lässt sich in Google importieren.
+      Wiederholung und Erinnerung sind darin enthalten.
+    </div>
+    <a class="btn sec full" style="margin-bottom:8px" target="_blank" rel="noopener" href="${esc(googleLink(pl, prop, pl.__unitLabel))}">
+      Google Kalender öffnen
+    </a>
+    <a class="btn sec full" style="margin-bottom:8px" target="_blank" rel="noopener" href="${esc(outlookLink(pl, prop, pl.__unitLabel))}">
+      Outlook im Web öffnen
+    </a>
+    <div class="xs muted" style="margin-bottom:14px">
+      Bei Outlook im Web trägt der Link Titel, Zeit und Ort ein. Wiederholung und Erinnerung musst du dort selbst setzen,
+      oder du nimmst die Termindatei oben, die kann beides.
+    </div>
+    <div class="row"><div class="spacer"></div><button class="btn sec" onclick="closeModal()">Schließen</button></div>
+  `);
 }
 
 /* =========================================================
@@ -1839,6 +1989,140 @@ async function saveScanSummary(el){
   if(error){ toast("Fehler: "+error.message, 4000); return; }
   IS.insp.scan_summary = wert;
   toast("Zusammenfassung gespeichert ✓");
+}
+
+/* =========================================================
+   TERMINE UND KALENDER
+   Erzeugt eine Termindatei nach iCalendar. Die verstehen Apple, Google,
+   Outlook, Microsoft 365 und Android gleichermaßen, ganz ohne Anmeldung.
+   ========================================================= */
+const FREQ_LABEL = {einmalig:"einmalig", wochen:"Wochen", monate:"Monate", jahre:"Jahre"};
+
+function planText(pl){
+  if(pl.freq === "einmalig") return "einmalig";
+  const n = pl.interval_n || 1;
+  if(pl.freq === "wochen") return n === 1 ? "jede Woche" : `alle ${n} Wochen`;
+  if(pl.freq === "monate") return n === 1 ? "jeden Monat" : `alle ${n} Monate`;
+  return n === 1 ? "jedes Jahr" : `alle ${n} Jahre`;
+}
+function planRRule(pl){
+  if(pl.freq === "einmalig") return null;
+  const f = pl.freq === "wochen" ? "WEEKLY" : pl.freq === "monate" ? "MONTHLY" : "YEARLY";
+  return `FREQ=${f};INTERVAL=${Math.max(1, pl.interval_n||1)}`;
+}
+/* Nächster Termin ab heute, damit die Übersicht stimmt. */
+function naechsterTermin(pl){
+  const start = new Date(pl.start_date + "T00:00:00");
+  const heute = new Date(); heute.setHours(0,0,0,0);
+  if(pl.freq === "einmalig" || start >= heute) return pl.start_date;
+  const n = Math.max(1, pl.interval_n||1);
+  const d = new Date(start);
+  let schutz = 0;
+  while(d < heute && schutz++ < 2000){
+    if(pl.freq === "wochen")      d.setDate(d.getDate() + 7*n);
+    else if(pl.freq === "monate") d.setMonth(d.getMonth() + n);
+    else                          d.setFullYear(d.getFullYear() + n);
+  }
+  return d.toISOString().slice(0,10);
+}
+
+function icsEscape(s){
+  return String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n");
+}
+/* Zeilen über 75 Zeichen müssen nach der Norm umgebrochen werden. */
+function icsFalten(zeile){
+  if(zeile.length <= 74) return zeile;
+  let out = zeile.slice(0,74), rest = zeile.slice(74);
+  while(rest.length > 73){ out += "\r\n " + rest.slice(0,73); rest = rest.slice(73); }
+  return out + "\r\n " + rest;
+}
+function zeitStempel(datum, zeit){
+  return datum.replace(/-/g,"") + "T" + String(zeit||"09:00").replace(":","") + "00";
+}
+function plusMinuten(datum, zeit, min){
+  const d = new Date(`${datum}T${(zeit||"09:00")}:00`);
+  d.setMinutes(d.getMinutes() + (min||120));
+  const p = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
+}
+
+function icsBauen(pl, prop, unitLabel){
+  const adresse = [[prop.street, prop.house_number].filter(Boolean).join(" "),
+                   [prop.zip, prop.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const titel = `${pl.title || "Begehung"}: ${prop.name}${unitLabel ? " / "+unitLabel : ""}`;
+  const beschreibung = [
+    pl.notes || "",
+    `Turnus: ${planText(pl)}`,
+    `Erinnerung: ${pl.reminder_days} Tage vorher`,
+    "Angelegt mit ImmoCheck"
+  ].filter(Boolean).join("\n");
+  const rrule = planRRule(pl);
+  /* Ortszeit ohne Zeitzonenangabe: der Termin gilt in der Zeit des Geräts, genau richtig für einen Vor-Ort-Termin. */
+  const zeilen = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ImmoCheck//Begehungstermin//DE",
+    "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${pl.id}@immocheck`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g,"").split(".")[0]}Z`,
+    `DTSTART:${zeitStempel(pl.start_date, pl.start_time)}`,
+    `DTEND:${plusMinuten(pl.start_date, pl.start_time, pl.duration_min)}`,
+    rrule ? `RRULE:${rrule}` : null,
+    `SUMMARY:${icsEscape(titel)}`,
+    adresse ? `LOCATION:${icsEscape(adresse)}` : null,
+    `DESCRIPTION:${icsEscape(beschreibung)}`,
+    "BEGIN:VALARM",
+    `TRIGGER:-P${Math.max(0, pl.reminder_days ?? 3)}D`,
+    "ACTION:DISPLAY",
+    `DESCRIPTION:${icsEscape(titel + " in " + (pl.reminder_days ?? 3) + " Tagen")}`,
+    "END:VALARM",
+    "END:VEVENT", "END:VCALENDAR"
+  ].filter(Boolean);
+  return zeilen.map(icsFalten).join("\r\n") + "\r\n";
+}
+
+function terminDatei(planId){
+  const pl = (IS.plaene||[]).find(x=>x.id===planId);
+  if(!pl){ toast("Termin nicht gefunden", 3000); return; }
+  const ics = icsBauen(pl, IS.planProp, pl.__unitLabel);
+  const blob = new Blob([ics], {type:"text/calendar;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `Begehung_${(IS.planProp.name||"Objekt").replace(/[^\wäöüÄÖÜß -]/g,"").trim().replace(/\s+/g,"_")}_${pl.start_date}.ics`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  toast("Termindatei erstellt, öffne sie mit deinem Kalender ✓");
+}
+
+function googleLink(pl, prop, unitLabel){
+  const titel = `${pl.title||"Begehung"}: ${prop.name}${unitLabel?" / "+unitLabel:""}`;
+  const adresse = [[prop.street, prop.house_number].filter(Boolean).join(" "),
+                   [prop.zip, prop.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const p = new URLSearchParams({
+    action:"TEMPLATE", text:titel,
+    dates:`${zeitStempel(pl.start_date, pl.start_time)}/${plusMinuten(pl.start_date, pl.start_time, pl.duration_min)}`,
+    details:[pl.notes||"", `Turnus: ${planText(pl)}`, "Angelegt mit ImmoCheck"].filter(Boolean).join("\n"),
+    location:adresse
+  });
+  const r = planRRule(pl);
+  if(r) p.append("recur", "RRULE:"+r);
+  return "https://calendar.google.com/calendar/render?" + p.toString();
+}
+function outlookLink(pl, prop, unitLabel){
+  const titel = `${pl.title||"Begehung"}: ${prop.name}${unitLabel?" / "+unitLabel:""}`;
+  const adresse = [[prop.street, prop.house_number].filter(Boolean).join(" "),
+                   [prop.zip, prop.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const start = `${pl.start_date}T${(pl.start_time||"09:00")}:00`;
+  const ende = (() => {
+    const d = new Date(start); d.setMinutes(d.getMinutes() + (pl.duration_min||120));
+    const q = n => String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${q(d.getMonth()+1)}-${q(d.getDate())}T${q(d.getHours())}:${q(d.getMinutes())}:00`;
+  })();
+  const p = new URLSearchParams({
+    path:"/calendar/action/compose", rru:"addevent", subject:titel,
+    startdt:start, enddt:ende, location:adresse,
+    body:[pl.notes||"", `Turnus: ${planText(pl)}`].filter(Boolean).join("\n")
+  });
+  return "https://outlook.live.com/calendar/0/deeplink/compose?" + p.toString();
 }
 
 /* =========================================================

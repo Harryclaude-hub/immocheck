@@ -598,6 +598,36 @@ alter table public.inspection_items add column if not exists options    text[] d
 alter table public.inspection_items add column if not exists value_num  numeric;
 alter table public.inspection_items add column if not exists value_text text;
 
+-- Geplante Begehungstermine, einmalig oder wiederkehrend
+create table if not exists public.inspection_plans (
+  id uuid primary key default gen_random_uuid(),
+  property_id uuid not null references public.properties(id) on delete cascade,
+  unit_id uuid references public.units(id) on delete set null,
+  title text not null default 'Begehung',
+  start_date date not null,
+  start_time text not null default '09:00',
+  duration_min integer not null default 120,
+  freq text not null default 'einmalig' check (freq in ('einmalig','wochen','monate','jahre')),
+  interval_n integer not null default 1,
+  reminder_days integer not null default 3,
+  template_id uuid references public.templates(id) on delete set null,
+  notes text,
+  active boolean not null default true,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists inspection_plans_property_idx on public.inspection_plans(property_id, start_date);
+
+alter table public.inspection_plans enable row level security;
+drop policy if exists plans_select on public.inspection_plans;
+create policy plans_select on public.inspection_plans for select to authenticated using (public.is_active_user());
+drop policy if exists plans_insert on public.inspection_plans;
+create policy plans_insert on public.inspection_plans for insert to authenticated with check (public.is_active_user());
+drop policy if exists plans_update on public.inspection_plans;
+create policy plans_update on public.inspection_plans for update to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists plans_delete on public.inspection_plans;
+create policy plans_delete on public.inspection_plans for delete to authenticated using (public.is_active_user());
+
 -- Gesprochene oder getippte Notizen waehrend der Begehung, je Raum
 create table if not exists public.inspection_notes (
   id uuid primary key default gen_random_uuid(),
