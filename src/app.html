@@ -797,7 +797,8 @@ function assistentAntwort(frage, obj){
   if(!obj && hat("wert","zustand","mangel","mängel","begehung","foto","termin")){
     return {text:"Dafür brauche ich ein Objekt. Schreib ein @ und wähle deine Immobilie aus, dann beantworte ich es anhand der echten Daten."};
   }
-  if(hat("recht","gesetz","paragraf","paragraph","vorschrift","pflicht")){
+  if(hat("recht","gesetz","paragraf","paragraph","vorschrift","vorgeschrieb","pflicht","verpflicht",
+         "norm","regel","erlaubt","zulässig","zulaessig","haftung","darf ich","muss ich")){
     /* Die Frageworte selbst wegwerfen, sonst passt "Gesetz" auf alles */
     const ohneFragewort = f.replace(/\b(was|sagt|das|gesetz|gesetze|paragraf|paragraph|vorschrift|pflicht|welche|welches|gibt|zu|der|die|den|es|ist|sind|ueber|über|bei|fuer|für)\b/g," ");
     const gefunden = rechtSuche(ohneFragewort, null).slice(0,4);
@@ -806,7 +807,11 @@ function assistentAntwort(frage, obj){
         : "Ich habe dazu keinen passenden Eintrag. Schau im Nachschlagewerk unter Recht, dort kannst du frei suchen.",
       recht: gefunden};
   }
-  if(!obj) return {text:"Schreib ein @ und wähle eine Immobilie, dann kann ich dir zu Zustand, Mängeln, Fotos, Terminen und Wert etwas sagen. Für Gesetze frag einfach nach dem Thema, zum Beispiel „Rauchmelder Pflicht\"."};
+  if(!obj){
+    const evtl = rechtSuche(frage, null).slice(0,3);
+    if(evtl.length) return {text:"Dazu gibt es im Nachschlagewerk:", recht:evtl};
+    return {text:"Schreib ein @ und wähle eine Immobilie, dann kann ich dir zu Zustand, Mängeln, Fotos, Terminen und Wert etwas sagen. Für Gesetze frag einfach nach dem Thema, zum Beispiel „Rauchmelder Pflicht\"."};
+  }
 
   const a = obj.analyse;
   if(hat("wert","bewert","schätz","preis","verkauf")){
@@ -845,7 +850,10 @@ function assistentAntwort(frage, obj){
       ? `Letzte abgeschlossene Begehung: ${fmtDate(obj.letzte.inspection_date)}, Note ${obj.letzte.score ?? "–"}, Prüfer ${obj.letzte.inspector_name || "unbekannt"}.`
       : "Noch keine abgeschlossene Begehung."};
   }
-  return {text:`Zu „${frage}\" habe ich keine Auswertung. Frag mich nach Zustand, Mängeln, offenen Punkten, Fotos, Terminen oder Wert. Für Gesetze nenn einfach das Thema.`};
+  /* Rückfall: vielleicht war es doch eine Rechtsfrage, nur anders formuliert */
+  const vielleicht = rechtSuche(frage, null).slice(0,3);
+  if(vielleicht.length) return {text:"Ich bin nicht sicher, ob du das meinst, aber dazu gibt es Einträge:", recht:vielleicht};
+  return {text:`Zu „${frage}\" habe ich keine Auswertung. Frag mich nach Zustand, Mängeln, offenen Punkten, Fotos, Terminen oder Wert. Für Gesetze nenn einfach das Thema, zum Beispiel „Rauchmelder" oder „Legionellen".`};
 }
 
 async function ladeObjektKontext(propId){
