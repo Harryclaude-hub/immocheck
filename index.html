@@ -1360,11 +1360,9 @@ async function ladeObjektKontext(propId){
 
 function viewAssistent(){
   S.chat = S.chat || [];
-  /* Falls direkt hierher gesprungen wurde, die Objektliste für das @ nachladen */
-  if(!(S.properties||[]).length){
-    sb.from("properties").select("*").eq("status","aktiv").order("name")
-      .then(r => { S.properties = r.data || []; });
-  }
+  /* Objektliste immer auffrischen, sonst fehlt eine gerade erst angelegte Immobilie im @ */
+  sb.from("properties").select("*").eq("status","aktiv").order("name")
+    .then(r => { if(r.data) S.properties = r.data; });
   $("#view").innerHTML = `
     <h1>Assistent</h1>
     <div class="card" style="border-left:4px solid var(--brand)">
