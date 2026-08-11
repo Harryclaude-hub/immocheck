@@ -3226,7 +3226,9 @@ async function viewInspectionResult(){
     .eq("property_id", prop.id)).data || [];
   const analyse = analysiere(insp, prop, items, historie);
   IS.analyse = analyse;
-  sb.from("inspections").update({analysis: analyse}).eq("id", insp.id);   // für die Historie festhalten
+  /* Für Historie, "Letzter Stand" und Assistent festhalten.
+     Das .then ist nötig: Supabase-Abfragen starten erst, wenn jemand auf sie wartet. */
+  sb.from("inspections").update({analysis: analyse}).eq("id", insp.id).then(()=>{});
   const maengel = aktiveItems(items).filter(i=>i.defect || i.presence==="nicht_vorhanden" || (i.rating!=null && i.rating<=2))
     .sort((a,b)=> (["kritisch","hoch","mittel","niedrig","keine"].indexOf(a.priority)) - (["kritisch","hoch","mittel","niedrig","keine"].indexOf(b.priority)));
 
