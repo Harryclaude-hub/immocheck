@@ -85,6 +85,9 @@ Diese Punkte sind teuer erkauft. Bitte nicht rückgängig machen.
    Kästchen, sonst hält der Leser die gedruckten Zeichen für ein Kreuz.
 8. **Schemaänderungen immer auch in `setup.sql`**, idempotent, und die `alter table` erst **nach** dem
    `create table` der betroffenen Tabelle.
+9. **Supabase-Aufrufe nie ohne `await` oder `.then` stehen lassen.** Die Abfrage startet erst, wenn
+   jemand auf sie wartet. Ein "Feuer und vergessen"-Update wird sonst **nie ausgeführt**; genau so
+   ging die gespeicherte Auswertung verloren.
 
 ## Recht und Assistent
 
