@@ -598,6 +598,32 @@ alter table public.inspection_items add column if not exists options    text[] d
 alter table public.inspection_items add column if not exists value_num  numeric;
 alter table public.inspection_items add column if not exists value_text text;
 
+-- Gedruckte Leerboegen, damit ein spaeter hochgeladenes Foto zugeordnet werden kann.
+create table if not exists public.paper_sheets (
+  id uuid primary key default gen_random_uuid(),
+  property_id uuid references public.properties(id) on delete cascade,
+  template_id uuid references public.templates(id) on delete set null,
+  unit_id     uuid references public.units(id) on delete set null,
+  herkunft text not null default 'immobilie'
+    check (herkunft in ('immobilie','vorlage','katalog','eigene')),
+  titel text not null default 'Begehungsbogen',
+  layout jsonb not null,
+  punkte jsonb not null,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists paper_sheets_property_idx on public.paper_sheets(property_id, created_at desc);
+
+alter table public.paper_sheets enable row level security;
+drop policy if exists sheets_select on public.paper_sheets;
+create policy sheets_select on public.paper_sheets for select to authenticated using (public.is_active_user());
+drop policy if exists sheets_insert on public.paper_sheets;
+create policy sheets_insert on public.paper_sheets for insert to authenticated with check (public.is_active_user());
+drop policy if exists sheets_update on public.paper_sheets;
+create policy sheets_update on public.paper_sheets for update to authenticated using (public.is_active_user()) with check (public.is_active_user());
+drop policy if exists sheets_delete on public.paper_sheets;
+create policy sheets_delete on public.paper_sheets for delete to authenticated using (public.is_active_user());
+
 -- Fotos zum Objekt, zu einem Raum, zu einer Einheit oder als Nachweis zu einer Notiz
 create table if not exists public.property_photos (
   id uuid primary key default gen_random_uuid(),

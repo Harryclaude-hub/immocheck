@@ -1313,6 +1313,8 @@ async function viewProperty(){
       </div>
       <div class="row">
         <button class="btn sec sm" onclick="editProperty('${p.id}')">Bearbeiten</button>
+        <button class="btn sec sm" onclick="bogenFuerImmobilie('${p.id}')">📄 Leerer Bogen</button>
+        <button class="btn sec sm" onclick="bogenScanDialog('${p.id}')">📥 Bogen einlesen</button>
         <button class="btn" onclick="startInspection('${p.id}')">+ Neue Begehung</button>
       </div>
     </div>
@@ -1458,7 +1460,10 @@ async function viewProperty(){
     <div class="card">
       <div class="row between">
         <h3 style="margin:0">Eigene Prüfpunkte ${eigene.length?`<span class="badge brand">${eigene.length}</span>`:""}</h3>
-        <button class="btn sec sm" onclick="editPropCriterion('${p.id}')">+ Frage</button>
+        <div class="row" style="gap:6px">
+          ${eigene.length?`<button class="btn sec sm" onclick="bogenFuerEigene('${p.id}')" title="Leeren Bogen nur mit diesen Fragen">📄 Bogen</button>`:""}
+          <button class="btn sec sm" onclick="editPropCriterion('${p.id}')">+ Frage</button>
+        </div>
       </div>
       <div class="small muted" style="margin-bottom:10px">
         Fragen, die es nur bei diesem Objekt gibt. Sie kommen bei jeder Begehung dieses Objekts automatisch dazu, zusätzlich zum gewählten Katalog.
@@ -3506,7 +3511,13 @@ function abbilden(H, X, Y){
    Merkmalsvergleich gegen selbst erzeugte Schriftvarianten.
    Läuft im Browser, nichts wird verschickt.
    ========================================================= */
-const ZEICHEN = ["0","1","2","3","4","5","6","7","8","9",",","-"];
+const ZIFFERN_ZEICHEN = ["0","1","2","3","4","5","6","7","8","9",",","-"];
+const BUCHSTABEN_ZEICHEN = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").concat(["0","1","2","3","4","5","6","7","8","9"]);
+/* Alle Klassen zusammen, die Auswahl steuert der Feldtyp:
+   Ziffernfelder erlauben keine Buchstaben, sonst wird aus einer 8 ein B. */
+const ZEICHEN = ZIFFERN_ZEICHEN.concat(BUCHSTABEN_ZEICHEN.filter(z => !ZIFFERN_ZEICHEN.includes(z)));
+const ZIFFERN_KLASSEN = ZIFFERN_ZEICHEN.map(z => ZEICHEN.indexOf(z));
+const BUCHSTABEN_KLASSEN = BUCHSTABEN_ZEICHEN.map(z => ZEICHEN.indexOf(z));
 let ZIFFER_MUSTER = null;
 
 /* 8x8 Tintendichte im Rahmen des Zeichens, dazu das Seitenverhältnis. */
@@ -3566,11 +3577,14 @@ function baueZifferMuster(){
   return muster;
 }
 
-/* Nächster Nachbar, dazu der Abstand zur zweitbesten Klasse als Maß für die Sicherheit. */
-function erkenneZeichen(mm){
+/* Nächster Nachbar, dazu der Abstand zur zweitbesten Klasse als Maß für die Sicherheit.
+   erlaubt schränkt auf die Klassen ein, die im jeweiligen Feld überhaupt vorkommen können. */
+function erkenneZeichen(mm, erlaubt){
   const muster = baueZifferMuster();
+  const erlaubtSet = erlaubt ? new Set(erlaubt) : null;
   const jeKlasse = new Array(ZEICHEN.length).fill(Infinity);
   for(const m of muster){
+    if(erlaubtSet && !erlaubtSet.has(m.klasse)) continue;
     let d = 0;
     for(let i=0;i<64;i++){ const t = mm.v[i]-m.v[i]; d += t*t; }
     /* Das Seitenverhältnis stärker gewichten: sonst wird eine schmale 1
@@ -3578,17 +3592,18 @@ function erkenneZeichen(mm){
     d += 0.12*Math.pow(Math.log((mm.seiten||1)/(m.seiten||1)), 2);
     if(d < jeKlasse[m.klasse]) jeKlasse[m.klasse] = d;
   }
-  const sortiert = jeKlasse.map((d,k)=>({d,k})).sort((a,b)=>a.d-b.d);
-  const beste = sortiert[0], zweite = sortiert[1];
+  const sortiert = jeKlasse.map((d,k)=>({d,k})).filter(x=>isFinite(x.d)).sort((a,b)=>a.d-b.d);
+  if(!sortiert.length) return {zeichen:"?", abstand:99, sicher:false};
+  const beste = sortiert[0], zweite = sortiert[1] || {d:Infinity};
   return {zeichen: ZEICHEN[beste.k], abstand:+beste.d.toFixed(4),
           sicher: beste.d < 0.03 && zweite.d > beste.d*1.3};
 }
 
-/* Liest die Messwert-Kästchen einer Seite. */
-function leseZiffern(maske, w, h, H, layout, seite){
+/* Liest eine Reihe von Einzelkästchen, egal ob Ziffern oder Buchstaben. */
+function leseKaemme(felder, maske, w, h, H, seite, klassen){
   const proNr = {};
-  (layout.ziffern||[]).filter(z => z.seite === seite).forEach(z => {
-    const ix = z.w*0.22, iy = z.h*0.19;              // Rahmenlinien großzügig aussparen
+  (felder||[]).filter(z => z.seite === seite).forEach(z => {
+    const ix = z.w*0.22, iy = z.h*0.19;
     const e = [abbilden(H, z.x+ix, z.y+iy), abbilden(H, z.x+z.w-ix, z.y+iy),
                abbilden(H, z.x+z.w-ix, z.y+z.h-iy), abbilden(H, z.x+ix, z.y+z.h-iy)];
     const x0 = Math.max(0, Math.floor(Math.min(...e.map(p=>p.x))));
@@ -3596,8 +3611,26 @@ function leseZiffern(maske, w, h, H, layout, seite){
     const y0 = Math.max(0, Math.floor(Math.min(...e.map(p=>p.y))));
     const y1 = Math.min(h, Math.ceil (Math.max(...e.map(p=>p.y))));
     const mm = (x1-x0 > 4 && y1-y0 > 4) ? zeichenMerkmale(maske, w, h, x0, y0, x1, y1) : null;
-    (proNr[z.nr] = proNr[z.nr] || [])[z.idx] = mm ? erkenneZeichen(mm) : null;
+    (proNr[z.nr] = proNr[z.nr] || [])[z.idx] = mm ? erkenneZeichen(mm, klassen) : null;
   });
+  return proNr;
+}
+
+/* Kurzantworten in Buchstabenkästchen. Unsichere Zeichen werden als ? markiert. */
+function leseBuchstaben(maske, w, h, H, layout, seite){
+  const proNr = leseKaemme(layout.buchstaben, maske, w, h, H, seite, BUCHSTABEN_KLASSEN);
+  return Object.entries(proNr).map(([nr, felder]) => {
+    const belegt = felder.filter(Boolean);
+    const text = felder.map(f => f ? (f.sicher ? f.zeichen : "?") : "").join("").trim();
+    const unsicher = belegt.filter(f => !f.sicher).length;
+    return {nr:Number(nr), text, unsicher,
+            sicher: belegt.length > 0 && unsicher === 0};
+  }).filter(r => r.text.length);
+}
+
+/* Liest die Messwert-Kästchen einer Seite. */
+function leseZiffern(maske, w, h, H, layout, seite){
+  const proNr = leseKaemme(layout.ziffern, maske, w, h, H, seite, ZIFFERN_KLASSEN);
   return Object.entries(proNr).map(([nr, felder]) => {
     const text = felder.map(f => f ? f.zeichen : "").join("");
     const belegt = felder.filter(Boolean);
@@ -3658,7 +3691,30 @@ async function leseBogenSeite(url, layout, seite){
     return {nr:Number(nr), wert, status, tinte:+beste.toFixed(3), zweite:+zweite.toFixed(3)};
   }).sort((a,b) => a.nr - b.nr);
 
-  return {zeilen, marken:gefunden, messwerte: leseZiffern(maske, w, h, H, layout, seite)};
+  /* Handschriftliche Notizzeilen: nicht maschinell lesbar, aber als Bildausschnitt
+     zeigbar, damit man beim Abtippen direkt danebenschaut. */
+  const notizBilder = [];
+  (layout.notizen||[]).filter(n => n.seite === seite).forEach(n => {
+    const ecken = [abbilden(H, n.x, n.y), abbilden(H, n.x+n.w, n.y),
+                   abbilden(H, n.x+n.w, n.y+n.h), abbilden(H, n.x, n.y+n.h)];
+    const x0 = Math.max(0, Math.floor(Math.min(...ecken.map(p=>p.x))));
+    const x1 = Math.min(w, Math.ceil (Math.max(...ecken.map(p=>p.x))));
+    const y0 = Math.max(0, Math.floor(Math.min(...ecken.map(p=>p.y))));
+    const y1 = Math.min(h, Math.ceil (Math.max(...ecken.map(p=>p.y))));
+    if(x1-x0 < 8 || y1-y0 < 6) return;
+    const flaeche = (x1-x0)*(y1-y0);
+    const anteil = fensterSumme(I,w,x0,y0,x1,y1)/flaeche;
+    if(anteil < 0.012) return;                     // leere Notizzeile, nichts geschrieben
+    const c = document.createElement("canvas");
+    c.width = x1-x0; c.height = y1-y0;
+    c.getContext("2d").drawImage(canvas, x0, y0, x1-x0, y1-y0, 0, 0, x1-x0, y1-y0);
+    notizBilder.push({nr:n.nr, bild:c.toDataURL("image/jpeg", .8)});
+  });
+
+  return {zeilen, marken:gefunden,
+          messwerte: leseZiffern(maske, w, h, H, layout, seite),
+          buchstaben: leseBuchstaben(maske, w, h, H, layout, seite),
+          notizBilder};
 }
 
 /* Liest alle hochgeladenen Seiten und zeigt das Ergebnis zur Kontrolle. */
@@ -3786,6 +3842,523 @@ async function uebernehmeLeseErgebnis(){
 
 /* Leerer Bogen zum Ausdrucken und mit dem Stift ausfüllen.
    Die Nummern entsprechen exakt denen in der Übertragen-Ansicht. */
+/* =========================================================
+   AUSGEFÜLLTEN LEERBOGEN EINLESEN
+   Läuft bei der Immobilie, ganz ohne vorher angelegte Begehung.
+   ========================================================= */
+async function bogenScanDialog(propId){
+  const boegen = (await sb.from("paper_sheets").select("id,titel,herkunft,created_at,punkte")
+    .or(`property_id.eq.${propId},property_id.is.null`)
+    .order("created_at", {ascending:false}).limit(25)).data || [];
+  if(!boegen.length){
+    toast("Es wurde noch kein Bogen gedruckt. Erst „Leerer Bogen“, dann ausfüllen und hier hochladen.", 6000);
+    return;
+  }
+  openModal(`
+    <h2>Ausgefüllten Bogen einlesen</h2>
+    <div class="small muted" style="margin:-8px 0 14px">
+      Wähle den Bogen, den du ausgedruckt hast, und fotografiere alle Seiten. Die Kennung steht unten auf jedem Blatt.
+    </div>
+    <div class="field"><label>Welcher Bogen?</label>
+      <select id="scan-bogen">
+        ${boegen.map(b=>`<option value="${b.id}">${esc(b.titel)} · ${(b.punkte||[]).length} Punkte · ${fmtDate(String(b.created_at).slice(0,10))} · ${String(b.id).slice(0,8)}</option>`).join("")}
+      </select>
+    </div>
+    <label class="btn full" style="margin-top:6px">
+      📷 Seiten fotografieren oder wählen
+      <input type="file" accept="image/*" multiple capture="environment" style="display:none"
+        onchange="bogenScanLesen(this,'${propId}')">
+    </label>
+    <div class="xs muted" style="margin-top:8px">
+      Die Seiten in der gedruckten Reihenfolge auswählen. Das Auslesen läuft auf deinem Gerät, es wird kein Bild verschickt.
+    </div>
+    <div class="row" style="margin-top:14px"><div class="spacer"></div>
+      <button class="btn sec" onclick="closeModal()">Abbrechen</button></div>`);
+}
+
+async function bogenScanLesen(input, propId){
+  const dateien = [...(input.files||[])];
+  if(!dateien.length) return;
+  const sheetId = el("scan-bogen").value;
+  const sheet = (await sb.from("paper_sheets").select("*").eq("id", sheetId).maybeSingle()).data;
+  if(!sheet){ toast("Bogen nicht gefunden", 4000); return; }
+  closeModal();
+  toast(`${dateien.length} Seite${dateien.length>1?"n":""} wird gelesen …`);
+
+  const kreuze = [], messwerte = [], buchstaben = [], notizBilder = [], probleme = [];
+  for(let k=0;k<dateien.length;k++){
+    try{
+      const url = URL.createObjectURL(dateien[k]);
+      const r = await leseBogenSeite(url, sheet.layout, k+1);
+      URL.revokeObjectURL(url);
+      if(r.fehler){ probleme.push(`Seite ${k+1}: ${r.fehler}`); continue; }
+      kreuze.push(...r.zeilen);
+      messwerte.push(...(r.messwerte||[]));
+      buchstaben.push(...(r.buchstaben||[]));
+      notizBilder.push(...(r.notizBilder||[]));
+    }catch(e){ probleme.push(`Seite ${k+1}: ${e.message}`); }
+  }
+  if(!kreuze.length && !messwerte.length && !buchstaben.length){
+    openModal(`<h2>Auslesen nicht möglich</h2>
+      <div class="small">${probleme.map(esc).join("<br>") || "Keine auswertbare Seite gefunden."}</div>
+      <div class="small muted" style="margin-top:12px">Der ganze Bogen muss im Bild sein, samt der vier schwarzen Ecken. Gleichmäßiges Licht, möglichst von oben.</div>
+      <div class="row" style="margin-top:14px"><div class="spacer"></div><button class="btn" onclick="closeModal()">Schließen</button></div>`);
+    return;
+  }
+  SCAN = {sheet, propId, kreuze, messwerte, buchstaben, notizBilder, probleme};
+  zeigeBogenErgebnis();
+}
+
+let SCAN = null;
+
+function zeigeBogenErgebnis(){
+  const {sheet, kreuze, messwerte, buchstaben, notizBilder, probleme} = SCAN;
+  const nachNr = {}; (sheet.punkte||[]).forEach(p => { nachNr[p.nr] = p; });
+  const mwNr = {}; messwerte.forEach(m => mwNr[m.nr] = m);
+  const buNr = {}; buchstaben.forEach(b => buNr[b.nr] = b);
+  const nbNr = {}; notizBilder.forEach(n => nbNr[n.nr] = n);
+  const krNr = {}; kreuze.forEach(z => krNr[z.nr] = z);
+
+  const optionenFuer = p => {
+    const t = p?.answer_type || "skala";
+    if(t === "ja_nein") return [["","– nichts –"],["ja","Ja"],["nein","Nein"],["nv","nicht vorhanden"]];
+    if(t === "auswahl") return [["","– nichts –"]]
+      .concat((p.options||[]).slice(0,5).map((o,k)=>["opt"+k, o]))
+      .concat([["nv","nicht vorhanden"]]);
+    return [["","– nichts –"],["1","1"],["2","2"],["3","3"],["4","4"],["5","5"],["nv","nicht vorhanden"]];
+  };
+
+  /* Nur Zeilen zeigen, bei denen etwas erkannt wurde oder etwas geschrieben steht */
+  const zeilen = (sheet.punkte||[]).filter(p =>
+    (krNr[p.nr] && krNr[p.nr].status !== "leer") || mwNr[p.nr] || buNr[p.nr] || nbNr[p.nr]);
+
+  const sicher   = kreuze.filter(z=>z.status==="sicher").length;
+  const unsicher = kreuze.filter(z=>z.status==="unsicher").length;
+  const nichtGelesen = Object.keys(nbNr).length
+    + messwerte.filter(m=>!m.sicher).length + buchstaben.filter(b=>!b.sicher).length;
+
+  openModal(`
+    <h2>Erkannter Bogen</h2>
+    <div class="small muted" style="margin:-8px 0 12px">
+      ${sicher} sicher angekreuzt, ${unsicher} unsicher, ${nichtGelesen} Stellen zum Nachsehen.
+      Bitte prüfen, dann als Begehung übernehmen.
+    </div>
+    ${probleme.length?`<div class="small" style="color:var(--bad);margin-bottom:10px">${probleme.map(esc).join("<br>")}</div>`:""}
+    <div style="max-height:50dvh;overflow:auto;margin-bottom:12px">
+      ${zeilen.map(p => {
+        const z = krNr[p.nr], mw = mwNr[p.nr], bu = buNr[p.nr], nb = nbNr[p.nr];
+        const t = p.answer_type || "skala";
+        let feld = "";
+        if(t === "messwert"){
+          feld = `<input type="number" step="any" class="scan-wert" data-nr="${p.nr}" data-art="messwert"
+                    style="max-width:150px" value="${mw && mw.wert!=null ? mw.wert : ""}">
+                  ${mw?`<div class="xs ${mw.sicher?"muted":""}" style="${mw.sicher?"":"color:var(--bad)"}">gelesen: ${esc(mw.text)}${mw.sicher?"":" · unsicher, bitte prüfen"}</div>`:""}`;
+        } else if(t === "text"){
+          feld = `<input type="text" class="scan-wert" data-nr="${p.nr}" data-art="text" value="${esc(bu?bu.text.replace(/\?/g,""):"")}">
+                  ${bu?`<div class="xs" style="${bu.sicher?"color:var(--muted)":"color:var(--bad)"}">gelesen: ${esc(bu.text)}${bu.sicher?"":` · ${bu.unsicher} Zeichen nicht sicher erkannt`}</div>`:""}`;
+        } else {
+          const opts = optionenFuer(p);
+          const vor = z && z.status !== "leer" ? z.wert : "";
+          feld = `<select class="scan-wert" data-nr="${p.nr}" data-art="wahl">
+            ${opts.map(([v,l])=>`<option value="${esc(v)}" ${vor===v?"selected":""}>${esc(l)}</option>`).join("")}
+          </select>`;
+        }
+        return `<div class="substep" style="margin:10px 0">
+          <h4><span class="bogen-nr">${p.nr}</span> ${esc(p.name)}
+            ${z && z.status==="unsicher" ? '<span class="badge warn xs">Kreuz unsicher</span>' : ""}</h4>
+          ${feld}
+          ${nb?`<div style="margin-top:7px">
+            <div class="xs" style="color:var(--bad);font-weight:700">Handschrift nicht maschinell lesbar, bitte abtippen</div>
+            <img src="${nb.bild}" alt="Notiz" style="max-width:100%;border:1px solid var(--line);border-radius:8px;margin:4px 0">
+            <input type="text" class="scan-notiz" data-nr="${p.nr}" placeholder="Notiz hier abtippen">
+          </div>`:""}
+        </div>`;
+      }).join("")}
+    </div>
+    <div class="row">
+      <button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+      <div class="spacer"></div>
+      <button class="btn" onclick="bogenAlsBegehung()">Als Begehung übernehmen</button>
+    </div>`);
+}
+
+async function bogenAlsBegehung(){
+  if(!SCAN) return;
+  const {sheet, propId} = SCAN;
+  const nachNr = {}; (sheet.punkte||[]).forEach(p => { nachNr[p.nr] = p; });
+
+  const werte = {};
+  document.querySelectorAll(".scan-wert").forEach(e => {
+    werte[e.dataset.nr] = {art:e.dataset.art, wert:e.value};
+  });
+  const notizen = {};
+  document.querySelectorAll(".scan-notiz").forEach(e => {
+    if(e.value.trim()) notizen[e.dataset.nr] = e.value.trim();
+  });
+
+  toast("Begehung wird angelegt …");
+  const {data:insp, error} = await sb.from("inspections").insert({
+    property_id: propId, unit_id: sheet.unit_id || null,
+    title: "Vom Papierbogen übernommen",
+    inspection_date: new Date().toISOString().slice(0,10),
+    inspector_id: S.user.id, inspector_name: S.profile?.full_name || S.user.email,
+    template_id: sheet.template_id || null, template_name: sheet.titel,
+    status: "offen"
+  }).select().single();
+  if(error){ toast("Fehler: "+error.message, 5000); return; }
+
+  const items = (sheet.punkte||[]).map(p => {
+    const w = werte[p.nr];
+    const rec = {
+      inspection_id: insp.id, criterion_id: p.kriterium_id || null,
+      category_key: p.kategorie_key || "sonstiges", category_name: p.kategorie || "Sonstiges",
+      criterion_name: p.name, sort_order: (p.kategorie_sort ?? 999)*1000 + p.nr,
+      critical: !!p.critical, answer_type: p.answer_type || "skala",
+      unit: p.unit || null, options: p.options || [],
+      min_value: p.min_value ?? null, max_value: p.max_value ?? null,
+      presence: "offen", note: notizen[p.nr] || null
+    };
+    if(w && w.wert !== ""){
+      if(w.art === "messwert"){ rec.value_num = Number(w.wert); rec.presence = "vorhanden"; }
+      else if(w.art === "text"){ rec.value_text = w.wert; rec.presence = "vorhanden"; }
+      else if(w.wert === "nv"){ rec.presence = "nicht_vorhanden"; }
+      else if(/^[1-5]$/.test(w.wert)){ rec.rating = Number(w.wert); rec.presence = "vorhanden"; }
+      else if(w.wert === "ja" || w.wert === "nein"){ rec.value_text = w.wert; rec.presence = "vorhanden"; }
+      else if(w.wert.startsWith("opt")){
+        const o = (p.options||[])[Number(w.wert.slice(3))];
+        if(o){ rec.value_text = o; rec.presence = "vorhanden"; }
+      }
+    }
+    return rec;
+  });
+  for(let k=0;k<items.length;k+=200){
+    const {error:e2} = await sb.from("inspection_items").insert(items.slice(k,k+200));
+    if(e2){ toast("Fehler beim Anlegen: "+e2.message, 5000); return; }
+  }
+  SCAN = null;
+  closeModal();
+  toast(`Begehung mit ${items.length} Punkten angelegt ✓`);
+  go("inspection", {id: insp.id});
+}
+
+/* =========================================================
+   PAPIERBOGEN, GEMEINSAMER KERN
+   Baut aus einer Liste von Prüfpunkten einen leeren Ankreuzbogen und
+   schreibt dabei die Geometrie mit, damit ein Foto davon später
+   maschinell gelesen werden kann.
+   punkte: [{nr, kategorie, name, answer_type, unit, options, critical}]
+   ========================================================= */
+const ZIFFERN_PRO_WERT = 5;      /* Messwert: 5 Kästchen */
+const BUCHSTABEN_PRO_TEXT = 10;  /* Kurzantwort: 10 Kästchen */
+
+function bogenPdf({titel, untertitel, kopfZeilen, punkte, kennung}){
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({unit:"mm", format:"a4"});
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 12;
+  /* Passermarken in den Außenrand, damit ein schiefes Foto zurechtgerechnet werden kann.
+     Reihenfolge fest: oben links, oben rechts, unten links, unten rechts. */
+  const MARK = 6;
+  const MARKEN = [{x:6, y:42}, {x:W-6, y:42}, {x:6, y:H-8}, {x:W-6, y:H-8}];
+
+  doc.setFillColor(11,28,77); doc.rect(0,0,W,28,"F");
+  doc.setFillColor(220,38,38); doc.rect(0,28,W,1.6,"F");
+  doc.setTextColor(255); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.text(titel, M, 12);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
+  doc.text(untertitel || "", M, 19);
+  doc.setFontSize(8);
+  doc.text("Ankreuzen, danach abfotografieren und in ImmoCheck hochladen", M, 24.5);
+  doc.setTextColor(30,41,59);
+
+  doc.autoTable({
+    startY: 34, theme:"plain",
+    styles:{fontSize:8.5, cellPadding:1.2, textColor:[30,41,59]},
+    columnStyles:{0:{fontStyle:"bold",cellWidth:24},2:{fontStyle:"bold",cellWidth:24}},
+    body: kopfZeilen
+  });
+
+  let y = doc.lastAutoTable.finalY + 4;
+  doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+  doc.text("Bewertung ankreuzen:  1 = sehr schlecht   2 = schlecht   3 = mittel   4 = gut   5 = sehr gut   |   n.v. = nicht vorhanden", M, y);
+  y += 4;
+
+  /* Nach Bereich gruppieren, Nummerierung läuft durch */
+  const bereiche = [];
+  punkte.forEach(p => {
+    const letzter = bereiche[bereiche.length-1];
+    if(letzter && letzter.name === p.kategorie) letzter.items.push(p);
+    else bereiche.push({name: p.kategorie, items:[p]});
+  });
+
+  const layout = {version:4, seite:{w:W, h:H}, marken:MARKEN, markeMm:MARK,
+                  kaesten:[], ziffern:[], buchstaben:[], notizen:[]};
+  const nachNr = {};
+  punkte.forEach(p => { nachNr[p.nr] = p; });
+
+  /* Was bedeuten die sechs Kästchen in dieser Zeile? null heißt: kein Kästchen drucken. */
+  const boxWerte = it => {
+    const t = it.answer_type || "skala";
+    if(t === "skala")   return ["1","2","3","4","5","nv"];
+    if(t === "ja_nein") return ["ja","nein",null,null,null,"nv"];
+    if(t === "auswahl"){
+      const o = (it.options||[]).slice(0,5);
+      return [0,1,2,3,4].map(k => o[k] ? "opt"+k : null).concat(["nv"]);
+    }
+    return [null,null,null,null,null,null];   /* Messwert und Text werden geschrieben */
+  };
+  /* Die Zuordnung steht im Klartext neben der Frage, damit die Kästchen leer bleiben
+     und das maschinelle Auslesen nicht durch gedruckte Zeichen gestört wird. */
+  const frageText = it => {
+    const t = it.answer_type || "skala";
+    let s2 = it.name + (it.critical ? "  (!)" : "");
+    if(t === "ja_nein")  s2 += "   [1 = Ja, 2 = Nein]";
+    if(t === "auswahl")  s2 += "   [" + (it.options||[]).slice(0,5).map((o,k)=>`${k+1} = ${o}`).join(", ") + "]";
+    if(t === "messwert") s2 += `   [Messwert${it.unit?" in "+it.unit:""} in die Kästchen]`;
+    if(t === "text")     s2 += "   [Kurzantwort in Großbuchstaben in die Kästchen]";
+    return s2;
+  };
+
+  /* Zeichnet eine Reihe von Einzelkästchen in die letzte Spalte. */
+  const kaemmeZeichnen = (d, anzahl, maxBreite, ziel, nr, seiteNr) => {
+    const bw = Math.min(maxBreite, (d.cell.width - 1.5) / anzahl);
+    const bh = Math.min(d.cell.height - 1.2, 7.5);
+    const x0 = d.cell.x + 1;
+    const y0 = d.cell.y + (d.cell.height - bh)/2;
+    doc.setDrawColor(148,163,184); doc.setLineWidth(0.25);
+    for(let k=0;k<anzahl;k++){
+      doc.rect(x0 + k*bw, y0, bw, bh);
+      ziel.push({nr, idx:k, seite:seiteNr,
+        x:+(x0+k*bw).toFixed(2), y:+y0.toFixed(2), w:+bw.toFixed(2), h:+bh.toFixed(2)});
+    }
+  };
+
+  bereiche.forEach(b => {
+    doc.autoTable({
+      didDrawCell: d => {
+        if(d.section !== "body") return;
+        const seiteNr = doc.internal.getCurrentPageInfo().pageNumber;
+        const it = nachNr[Number(d.row.raw[0])];
+        if(!it) return;
+
+        /* Letzte Spalte: je nach Antwortart Kästchen oder freie Notizzeile */
+        if(d.column.index === 8){
+          const t = it.answer_type || "skala";
+          if(t === "messwert"){
+            kaemmeZeichnen(d, ZIFFERN_PRO_WERT, 8, layout.ziffern, it.nr, seiteNr);
+          } else if(t === "text"){
+            kaemmeZeichnen(d, BUCHSTABEN_PRO_TEXT, 5.5, layout.buchstaben, it.nr, seiteNr);
+          } else {
+            /* Notizfeld: Geometrie merken, damit die Handschrift später
+               als Bildausschnitt gezeigt werden kann. */
+            layout.notizen.push({nr: it.nr, seite: seiteNr,
+              x:+d.cell.x.toFixed(2), y:+d.cell.y.toFixed(2),
+              w:+d.cell.width.toFixed(2), h:+d.cell.height.toFixed(2)});
+          }
+          return;
+        }
+
+        const idx = d.column.index - 2;
+        if(idx < 0 || idx > 5) return;
+        const wert = boxWerte(it)[idx];
+        if(!wert) return;
+        layout.kaesten.push({
+          nr: it.nr, wert, seite: seiteNr,
+          x: +d.cell.x.toFixed(2), y: +d.cell.y.toFixed(2),
+          w: +d.cell.width.toFixed(2), h: +d.cell.height.toFixed(2)
+        });
+      },
+      startY: y,
+      head: [[{content:b.name, colSpan:9, styles:{halign:"left", fillColor:[219,234,254], textColor:[29,78,216], fontStyle:"bold", fontSize:9}}],
+             ["Nr", "Prüfpunkt", "1","2","3","4","5","n.v.","Notiz / Antwort"]],
+      body: b.items.map(it => [String(it.nr), frageText(it), "","","","","","",""]),
+      theme:"grid",
+      styles:{fontSize:8, cellPadding:{top:2.4,bottom:2.4,left:1.5,right:1.5}, textColor:[30,41,59], lineColor:[203,213,225], lineWidth:0.2},
+      headStyles:{fillColor:[241,245,249], textColor:[71,85,105], fontSize:7.5, halign:"center"},
+      columnStyles:{
+        0:{cellWidth:8, halign:"center", textColor:[100,116,139]},
+        1:{cellWidth:70},
+        2:{cellWidth:7, halign:"center"}, 3:{cellWidth:7, halign:"center"},
+        4:{cellWidth:7, halign:"center"}, 5:{cellWidth:7, halign:"center"},
+        6:{cellWidth:7, halign:"center"}, 7:{cellWidth:9, halign:"center"},
+        8:{cellWidth:"auto"}
+      },
+      margin:{left:M, right:M}
+    });
+    y = doc.lastAutoTable.finalY + 3;
+    if(y > 250){ doc.addPage(); y = 16; }
+  });
+
+  if(y > 235){ doc.addPage(); y = 16; }
+  doc.setFont("helvetica","bold"); doc.setFontSize(9);
+  doc.text("Allgemeine Anmerkungen", M, y); y += 4;
+  doc.setDrawColor(203,213,225);
+  for(let i=0;i<5;i++){ doc.line(M, y+i*7, W-M, y+i*7); }
+  y += 5*7 + 6;
+  doc.setFont("helvetica","normal"); doc.setFontSize(8);
+  doc.line(M, y+10, M+62, y+10); doc.text("Prüfer, Unterschrift", M, y+14);
+  doc.line(W-M-62, y+10, W-M, y+10); doc.text("Anwesende Person, Unterschrift", W-M-62, y+14);
+
+  /* Seitenfuß mit Kennung, damit ein Scan später zuordenbar bleibt */
+  const seiten = doc.internal.getNumberOfPages();
+  for(let s2=1;s2<=seiten;s2++){
+    doc.setPage(s2);
+    doc.setFontSize(7); doc.setTextColor(148,163,184);
+    doc.text(`ImmoCheck · Bogen-Kennung ${String(kennung).slice(0,8)} · Seite ${s2} von ${seiten}`, M, H-7);
+    /* Passermarken zuletzt, damit sie nichts überdeckt */
+    doc.setFillColor(0,0,0);
+    MARKEN.forEach(m => doc.rect(m.x-MARK/2, m.y-MARK/2, MARK, MARK, "F"));
+  }
+  layout.seiten = seiten;
+  return {doc, layout};
+}
+
+/* Dateiname ohne Sonderzeichen */
+function bogenDatei(basis){
+  return `Begehungsbogen_${String(basis||"Bogen").replace(/[^\wäöüÄÖÜß -]/g,"").trim().replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.pdf`;
+}
+
+/* Wandelt Prüfkatalog-Einträge in die Form, die bogenPdf erwartet. */
+function kriterienZuPunkten(kriterien){
+  return kriterien.slice()
+    .sort((a,b) => {
+      const ka = S.categories.find(c=>c.id===a.category_id)?.sort_order ?? 999;
+      const kb = S.categories.find(c=>c.id===b.category_id)?.sort_order ?? 999;
+      return ka - kb || (a.sort_order||0) - (b.sort_order||0);
+    })
+    .map((c, i) => {
+      const kat = S.categories.find(k => k.id === c.category_id);
+      return {
+        nr: i+1, kriterium_id: c.id,
+        kategorie: kat?.name || "Sonstiges", kategorie_key: kat?.key || "sonstiges",
+        kategorie_sort: kat?.sort_order ?? 999,
+        name: c.name, answer_type: c.answer_type || "skala",
+        unit: c.unit || null, options: c.options || [], critical: !!c.critical,
+        min_value: c.min_value ?? null, max_value: c.max_value ?? null
+      };
+    });
+}
+
+/* Legt einen Leerbogen an, speichert Layout und Punkte und lädt die Datei herunter. */
+async function leerBogenErzeugen({titel, untertitel, kopfZeilen, punkte, herkunft, propId, tplId, dateiBasis}){
+  if(!punkte.length){ toast("Dieser Katalog enthält keine Prüfpunkte.", 4000); return null; }
+  const kennung = crypto.randomUUID();
+  const {doc, layout} = bogenPdf({titel, untertitel, kopfZeilen, punkte, kennung});
+  const rec = {
+    id: kennung, property_id: propId || null, template_id: tplId || null,
+    herkunft, titel, layout, punkte, created_by: S.user.id
+  };
+  const {error} = await sb.from("paper_sheets").insert(rec);
+  if(error) toast("Hinweis: Bogen ist fertig, konnte aber nicht registriert werden. Auslesen später geht dann nicht.", 6000);
+  doc.save(bogenDatei(dateiBasis));
+  toast(`Bogen mit ${punkte.length} Punkten erstellt ✓`);
+  return kennung;
+}
+
+/* ---- Ausgabestellen ---- */
+
+/* Immobilie: Katalog wählen, dann Leerbogen inklusive der eigenen Fragen des Objekts */
+async function bogenFuerImmobilie(propId){
+  const p = (await sb.from("properties").select("*").eq("id",propId).maybeSingle()).data;
+  if(!p){ toast("Immobilie nicht gefunden", 3000); return; }
+  const verfuegbar = S.templates.filter(t => !t.property_id || t.property_id === propId);
+  const passend = verfuegbar.filter(t => t.property_id === propId || (t.object_types||[]).includes(p.object_type));
+  const liste = passend.concat(verfuegbar.filter(t => !passend.includes(t)));
+  if(!liste.length){ toast("Es ist keine Vorlage vorhanden.", 4000); return; }
+  const einheiten = (await sb.from("units").select("id,label").eq("property_id",propId).order("label")).data || [];
+  openModal(`
+    <h2>Leeren Bogen drucken</h2>
+    <div class="small muted" style="margin:-8px 0 14px">Zum Ausdrucken und Ankreuzen. Die eigenen Fragen dieses Objekts kommen automatisch dazu.</div>
+    <form onsubmit="return bogenImmobilieStarten(event,'${propId}')">
+      <div class="field"><label>Fragenkatalog</label>
+        <select name="template_id">
+          ${liste.map(t=>`<option value="${t.id}">${esc(t.icon||"📋")} ${esc(t.name)} · ${tplPunkte(t.id).length} Punkte</option>`).join("")}
+        </select>
+      </div>
+      <div class="field"><label>Umfang</label>
+        <select name="unit_id">
+          <option value="">Gesamtes Gebäude</option>
+          ${einheiten.map(u=>`<option value="${u.id}">${esc(u.label)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="row"><button type="button" class="btn sec" onclick="closeModal()">Abbrechen</button>
+        <div class="spacer"></div><button class="btn" type="submit">📄 Bogen erstellen</button></div>
+    </form>`);
+}
+
+async function bogenImmobilieStarten(ev, propId){
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const tplId = fd.get("template_id");
+  const unitId = fd.get("unit_id") || null;
+  closeModal();
+  toast("Bogen wird erstellt …");
+  const p = (await sb.from("properties").select("*").eq("id",propId).maybeSingle()).data;
+  const erlaubt = unitId ? ["einheit","beide"] : ["gebaeude","beide"];
+  const eigene = ((await sb.from("criteria").select("*").eq("property_id",propId).eq("active",true).order("sort_order")).data || [])
+    .filter(c => erlaubt.includes(c.scope || "beide"));
+  const punkte = kriterienZuPunkten(tplPunkte(tplId).concat(eigene));
+  const einheit = unitId
+    ? ((await sb.from("units").select("label").eq("id",unitId).maybeSingle()).data?.label || "Einheit")
+    : "Gesamtes Gebäude";
+  const adr = [[p.street, p.house_number].filter(Boolean).join(" "), [p.zip, p.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const tpl = S.templates.find(t=>t.id===tplId);
+  await leerBogenErzeugen({
+    titel:"Begehungsbogen zum Ausfüllen",
+    untertitel:`${p.name} · ${tpl?tpl.name:"Katalog"}`,
+    kopfZeilen:[
+      ["Objekt", p.name||"-", "Umfang", einheit],
+      ["Adresse", adr||"-", "Objektart", objLabel(p.object_type)],
+      ["Prüfer", "", "Datum", ""]
+    ],
+    punkte, herkunft:"immobilie", propId, tplId, dateiBasis:p.name
+  });
+  return false;
+}
+
+/* Vorlage: reiner Katalogbogen ohne Objektbezug */
+async function bogenFuerVorlage(tplId){
+  const t = S.templates.find(x=>x.id===tplId);
+  if(!t){ toast("Vorlage nicht gefunden", 3000); return; }
+  toast("Bogen wird erstellt …");
+  await leerBogenErzeugen({
+    titel:"Begehungsbogen zum Ausfüllen",
+    untertitel:`Vorlage: ${t.name}`,
+    kopfZeilen:[["Objekt", "", "Umfang", ""], ["Adresse", "", "Katalog", t.name], ["Prüfer", "", "Datum", ""]],
+    punkte: kriterienZuPunkten(tplPunkte(tplId)),
+    herkunft:"vorlage", tplId, dateiBasis:t.name
+  });
+}
+
+/* Prüfkatalog: alle aktiven allgemeinen Prüfpunkte */
+async function bogenFuerKatalog(){
+  toast("Bogen wird erstellt …");
+  await leerBogenErzeugen({
+    titel:"Begehungsbogen zum Ausfüllen",
+    untertitel:"Vollständiger Prüfkatalog",
+    kopfZeilen:[["Objekt", "", "Umfang", ""], ["Adresse", "", "Katalog", "Alle Prüfpunkte"], ["Prüfer", "", "Datum", ""]],
+    punkte: kriterienZuPunkten(S.criteria),
+    herkunft:"katalog", dateiBasis:"Pruefkatalog"
+  });
+}
+
+/* Eigene Fragen einer Immobilie */
+async function bogenFuerEigene(propId){
+  const p = (await sb.from("properties").select("name").eq("id",propId).maybeSingle()).data;
+  const eigene = (await sb.from("criteria").select("*").eq("property_id",propId).eq("active",true).order("sort_order")).data || [];
+  if(!eigene.length){ toast("Für dieses Objekt gibt es noch keine eigenen Fragen.", 4000); return; }
+  toast("Bogen wird erstellt …");
+  await leerBogenErzeugen({
+    titel:"Begehungsbogen zum Ausfüllen",
+    untertitel:`${p?.name||"Objekt"} · nur eigene Fragen`,
+    kopfZeilen:[["Objekt", p?.name||"-", "Umfang", "Eigene Fragen"], ["Adresse", "", "Katalog", "Eigene Fragen"], ["Prüfer", "", "Datum", ""]],
+    punkte: kriterienZuPunkten(eigene),
+    herkunft:"eigene", propId, dateiBasis:(p?.name||"Objekt")+"_eigene"
+  });
+}
+
+/* Bogen aus einer laufenden Begehung, wie bisher */
 async function makePaperSheet(id){
   toast("Bogen wird erstellt …");
   try{
@@ -3793,173 +4366,35 @@ async function makePaperSheet(id){
     const {insp, prop, items} = IS;
     const aktiv = aktiveItems(items).slice().sort((a,b)=>a.sort_order-b.sort_order);
     if(!aktiv.length){ toast("Diese Begehung enthält keine Prüfpunkte.", 4000); return; }
+    aktiv.forEach((it,i) => { if(it.__nr == null) it.__nr = i+1; });
 
-    const {jsPDF} = window.jspdf;
-    const doc = new jsPDF({unit:"mm", format:"a4"});
-    const W = doc.internal.pageSize.getWidth();
-    const H = doc.internal.pageSize.getHeight();
-    const M = 12;
-    /* Passermarken in den Aussenrand, damit ein schiefes Foto zurechtgerechnet werden kann.
-       Reihenfolge fest: oben links, oben rechts, unten links, unten rechts. */
-    const MARK = 6;
-    /* Abstand zum Kopfbalken und zum Tabellenrand, damit rund um die Marke nur weißes Papier liegt */
-    const MARKEN = [{x:6, y:42}, {x:W-6, y:42}, {x:6, y:H-8}, {x:W-6, y:H-8}];
-
-    doc.setFillColor(29,78,216); doc.rect(0,0,W,28,"F");
-    doc.setFillColor(220,38,38); doc.rect(0,28,W,1.6,"F");
-    doc.setTextColor(255); doc.setFont("helvetica","bold"); doc.setFontSize(16);
-    doc.text("Begehungsbogen zum Ausfüllen", M, 12);
-    doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
-    doc.text(`${insp.title||"Begehung"} · ${fmtDate(insp.inspection_date)}`, M, 19);
-    doc.setFontSize(8);
-    doc.text("Ankreuzen, danach abfotografieren und in ImmoCheck hochladen", M, 24.5);
-    doc.setTextColor(30,41,59);
-
+    const punkte = aktiv.map(it => ({
+      nr: it.__nr, kategorie: it.category_name, name: it.criterion_name,
+      answer_type: it.answer_type || "skala", unit: it.unit || null,
+      options: it.options || [], critical: !!it.critical, item_id: it.id
+    }));
     const adr = [[prop.street, prop.house_number].filter(Boolean).join(" "), [prop.zip, prop.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
     const einheit = insp.unit_id ? (IS.unit?.label || "Einheit") : "Gesamtes Gebäude";
-    doc.autoTable({
-      startY: 34, theme:"plain",
-      styles:{fontSize:8.5, cellPadding:1.2, textColor:[30,41,59]},
-      columnStyles:{0:{fontStyle:"bold",cellWidth:24},2:{fontStyle:"bold",cellWidth:24}},
-      body:[
+
+    const {doc, layout} = bogenPdf({
+      titel:"Begehungsbogen zum Ausfüllen",
+      untertitel:`${insp.title||"Begehung"} · ${fmtDate(insp.inspection_date)}`,
+      kopfZeilen:[
         ["Objekt", prop.name||"-", "Umfang", einheit],
         ["Adresse", adr||"-", "Objektart", objLabel(prop.object_type)],
         ["Prüfer", insp.inspector_name||"-", "Datum", fmtDate(insp.inspection_date)]
-      ]
+      ],
+      punkte, kennung:id
     });
-
-    let y = doc.lastAutoTable.finalY + 4;
-    doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
-    doc.text("Bewertung ankreuzen:  1 = sehr schlecht   2 = schlecht   3 = mittel   4 = gut   5 = sehr gut   |   n.v. = nicht vorhanden", M, y);
-    y += 4;
-
-    /* Nach Bereich gruppieren, Nummerierung läuft durch */
-    const bereiche = [];
-    aktiv.forEach((it, i) => {
-      if(it.__nr == null) it.__nr = i + 1;
-      const letzter = bereiche[bereiche.length-1];
-      if(letzter && letzter.name === it.category_name) letzter.items.push(it);
-      else bereiche.push({name: it.category_name, items:[it]});
-    });
-
-    /* Geometrie mitschreiben, damit ein Foto des Bogens später ausgelesen werden kann */
-    const layout = {version:3, seite:{w:W, h:H}, marken:MARKEN, markeMm:MARK, kaesten:[], ziffern:[]};
-    const ZIFFERN_PRO_WERT = 5;
-    const nachNr = {};
-    aktiv.forEach(it => { nachNr[it.__nr] = it; });
-
-    /* Was bedeuten die sechs Kästchen in dieser Zeile? null heißt: kein Kästchen drucken. */
-    const boxWerte = it => {
-      const t = it.answer_type || "skala";
-      if(t === "skala")   return ["1","2","3","4","5","nv"];
-      if(t === "ja_nein") return ["ja","nein",null,null,null,"nv"];
-      if(t === "auswahl"){
-        const o = (it.options||[]).slice(0,5);
-        return [0,1,2,3,4].map(k => o[k] ? "opt"+k : null).concat(["nv"]);
-      }
-      return [null,null,null,null,null,null];      // Messwert und Text werden geschrieben, nicht angekreuzt
-    };
-    /* Die Zuordnung steht im Klartext neben der Frage, damit die Kästchen leer bleiben
-       und das maschinelle Auslesen nicht durch gedruckte Zeichen gestört wird. */
-    const frageText = it => {
-      const t = it.answer_type || "skala";
-      let s = it.criterion_name + (it.critical ? "  (!)" : "");
-      if(t === "ja_nein")  s += "   [1 = Ja, 2 = Nein]";
-      if(t === "auswahl")  s += "   [" + (it.options||[]).slice(0,5).map((o,k)=>`${k+1} = ${o}`).join(", ") + "]";
-      if(t === "messwert") s += `   [Messwert${it.unit?" in "+it.unit:""} rechts eintragen]`;
-      if(t === "text")     s += "   [Antwort rechts eintragen]";
-      return s;
-    };
-
-    bereiche.forEach(b => {
-      doc.autoTable({
-        didDrawCell: d => {
-          if(d.section !== "body") return;
-          const seiteNr = doc.internal.getCurrentPageInfo().pageNumber;
-
-          /* Messwerte bekommen Einzelkästchen, ein Zeichen je Kästchen */
-          if(d.column.index === 8){
-            const mw = nachNr[Number(d.row.raw[0])];
-            if(mw && mw.answer_type === "messwert"){
-              const bw = Math.min(8, (d.cell.width - 1.5) / ZIFFERN_PRO_WERT);
-              const bh = Math.min(d.cell.height - 1.2, 7.5);
-              const x0 = d.cell.x + 1;
-              const y0 = d.cell.y + (d.cell.height - bh)/2;
-              doc.setDrawColor(148,163,184); doc.setLineWidth(0.25);
-              for(let k=0;k<ZIFFERN_PRO_WERT;k++){
-                doc.rect(x0 + k*bw, y0, bw, bh);
-                layout.ziffern.push({nr: mw.__nr, idx:k, seite:seiteNr,
-                  x:+(x0+k*bw).toFixed(2), y:+y0.toFixed(2), w:+bw.toFixed(2), h:+bh.toFixed(2)});
-              }
-            }
-            return;
-          }
-
-          const idx = d.column.index - 2;
-          if(idx < 0 || idx > 5) return;
-          const it = nachNr[Number(d.row.raw[0])];
-          if(!it) return;
-          const wert = boxWerte(it)[idx];
-          if(!wert) return;
-          layout.kaesten.push({
-            nr: it.__nr, wert,
-            seite: doc.internal.getCurrentPageInfo().pageNumber,
-            x: +d.cell.x.toFixed(2), y: +d.cell.y.toFixed(2),
-            w: +d.cell.width.toFixed(2), h: +d.cell.height.toFixed(2)
-          });
-        },
-        startY: y,
-        head: [[{content:b.name, colSpan:9, styles:{halign:"left", fillColor:[219,234,254], textColor:[29,78,216], fontStyle:"bold", fontSize:9}}],
-               ["Nr", "Prüfpunkt", "1","2","3","4","5","n.v.","Notiz"]],
-        body: b.items.map(it => [String(it.__nr), frageText(it), "","","","","","",""]),
-        theme:"grid",
-        styles:{fontSize:8, cellPadding:{top:2.1,bottom:2.1,left:1.5,right:1.5}, textColor:[30,41,59], lineColor:[203,213,225], lineWidth:0.2},
-        headStyles:{fillColor:[241,245,249], textColor:[71,85,105], fontSize:7.5, halign:"center"},
-        columnStyles:{
-          0:{cellWidth:8, halign:"center", textColor:[100,116,139]},
-          1:{cellWidth:74},
-          2:{cellWidth:7, halign:"center"}, 3:{cellWidth:7, halign:"center"},
-          4:{cellWidth:7, halign:"center"}, 5:{cellWidth:7, halign:"center"},
-          6:{cellWidth:7, halign:"center"}, 7:{cellWidth:9, halign:"center"},
-          8:{cellWidth:"auto"}
-        },
-        margin:{left:M, right:M}
-      });
-      y = doc.lastAutoTable.finalY + 3;
-      if(y > 250){ doc.addPage(); y = 16; }
-    });
-
-    if(y > 235){ doc.addPage(); y = 16; }
-    doc.setFont("helvetica","bold"); doc.setFontSize(9);
-    doc.text("Allgemeine Anmerkungen", M, y); y += 4;
-    doc.setDrawColor(203,213,225);
-    for(let i=0;i<5;i++){ doc.line(M, y+i*7, W-M, y+i*7); }
-    y += 5*7 + 6;
-    doc.setFont("helvetica","normal"); doc.setFontSize(8);
-    doc.line(M, y+10, M+62, y+10); doc.text("Prüfer, Unterschrift", M, y+14);
-    doc.line(W-M-62, y+10, W-M, y+10); doc.text("Anwesende Person, Unterschrift", W-M-62, y+14);
-
-    /* Seitenfuß mit Kennung, damit ein Scan später zuordenbar bleibt */
-    const seiten = doc.internal.getNumberOfPages();
-    for(let s=1;s<=seiten;s++){
-      doc.setPage(s);
-      doc.setFontSize(7); doc.setTextColor(148,163,184);
-      doc.text(`ImmoCheck · Bogen-Kennung ${id.slice(0,8)} · Seite ${s} von ${seiten}`, M, H-7);
-      /* Passermarken zuletzt, damit sie nichts überdeckt */
-      doc.setFillColor(0,0,0);
-      MARKEN.forEach(m => doc.rect(m.x-MARK/2, m.y-MARK/2, MARK, MARK, "F"));
-    }
-    layout.seiten = seiten;
 
     /* Layout merken, damit das Auslesen des Fotos später weiß, wo die Kästchen sind */
     if(IS.insp && IS.insp.id === id) IS.insp.sheet_layout = layout;
     try{
       const {error:eL} = await sb.from("inspections").update({sheet_layout: layout}).eq("id", id);
       if(eL) toast("Hinweis: Der Bogen ist fertig, das Auslesen später klappt aber nur in dieser Sitzung.", 5000);
-    }catch(e){ /* der gedruckte Bogen bleibt gültig, nur das spätere Auslesen braucht das Layout */ }
+    }catch(e){ /* der gedruckte Bogen bleibt gültig */ }
 
-    const datei = `Begehungsbogen_${(prop.name||"Objekt").replace(/[^\wäöüÄÖÜß -]/g,"").trim().replace(/\s+/g,"_")}_${insp.inspection_date}.pdf`;
-    doc.save(datei);
+    doc.save(bogenDatei(prop.name));
     toast("Bogen erstellt ✓");
   }catch(e){
     toast("Fehler beim Bogen: "+e.message, 5000);
@@ -4284,6 +4719,7 @@ async function viewTemplates(){
           </div>
         </div>
         <div class="row" style="gap:6px">
+          <button class="btn sec sm" onclick="event.stopPropagation();bogenFuerVorlage('${t.id}')" title="Leeren Bogen zum Ausdrucken">📄 Bogen</button>
           <button class="btn sec sm" onclick="tplBearbeiten('${t.id}')">Fragen wählen</button>
           <button class="btn ghost sm" onclick="tplKopieren('${t.id}')" title="Als Grundlage für eigene Vorlage">Kopieren</button>
           ${!t.is_system?`<button class="btn ghost sm" onclick="tplLoeschen('${t.id}')">Löschen</button>`:""}
@@ -4496,6 +4932,7 @@ async function viewCatalog(){
     <div class="row between" style="margin-bottom:6px">
       <h1>Prüfkatalog</h1>
       <div class="row">
+        <button class="btn sec sm" onclick="bogenFuerKatalog()" title="Alle Prüfpunkte als leeren Bogen">📄 Bogen</button>
         <button class="btn sec sm" onclick="editCategory()">+ Kategorie</button>
         <button class="btn" onclick="editCriterion()">+ Prüfpunkt</button>
       </div>
