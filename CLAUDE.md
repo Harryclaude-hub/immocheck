@@ -88,6 +88,22 @@ Diese Punkte sind teuer erkauft. Bitte nicht rückgängig machen.
 9. **Supabase-Aufrufe nie ohne `await` oder `.then` stehen lassen.** Die Abfrage startet erst, wenn
    jemand auf sie wartet. Ein "Feuer und vergessen"-Update wird sonst **nie ausgeführt**; genau so
    ging die gespeicherte Auswertung verloren.
+10. **In Ziffernfeldern keine Buchstaben zulassen und umgekehrt.** Sonst wird aus 8 ein B und aus O
+    eine 0. `erkenneZeichen(mm, erlaubt, bevorzugt)`: Messfelder nur `ZIFFERN_KLASSEN`, Textfelder
+    `BUCHSTABEN_KLASSEN` mit Vorzug auf `NUR_BUCHSTABEN_KLASSEN`.
+
+## Papierbogen, Überblick
+
+`bogenPdf({titel, untertitel, kopfZeilen, punkte, kennung})` ist der gemeinsame Kern und liefert
+`{doc, layout}`. Darauf setzen auf: `makePaperSheet(inspectionId)` (Bogen zur laufenden Begehung,
+Layout in `inspections.sheet_layout`) und `leerBogenErzeugen(...)` für Leerbögen aus Immobilie,
+Vorlage, Prüfkatalog und eigenen Fragen; deren Layout plus Punkteliste landet in `paper_sheets`.
+Einlesen bei der Immobilie über `bogenScanDialog` → `bogenScanLesen` → `bogenAlsBegehung`, das eine
+neue offene Begehung mit den erkannten Werten anlegt.
+
+Im Layout stehen vier Arten von Feldern: `kaesten` (Ankreuzfelder), `ziffern` (Messwert, 5 Kästchen),
+`buchstaben` (Kurzantwort, 10 Kästchen) und `notizen` (freie Zeile). Notizzeilen werden **nicht**
+maschinell gelesen, sondern als Bildausschnitt gezeigt, damit man beim Abtippen danebenschaut.
 
 ## Recht und Assistent
 
