@@ -3937,6 +3937,7 @@ const BUCHSTABEN_ZEICHEN = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").concat(["0","1
 const ZEICHEN = ZIFFERN_ZEICHEN.concat(BUCHSTABEN_ZEICHEN.filter(z => !ZIFFERN_ZEICHEN.includes(z)));
 const ZIFFERN_KLASSEN = ZIFFERN_ZEICHEN.map(z => ZEICHEN.indexOf(z));
 const BUCHSTABEN_KLASSEN = BUCHSTABEN_ZEICHEN.map(z => ZEICHEN.indexOf(z));
+const NUR_BUCHSTABEN_KLASSEN = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(z => ZEICHEN.indexOf(z));
 let ZIFFER_MUSTER = null;
 
 /* 8x8 Tintendichte im Rahmen des Zeichens, dazu das Seitenverhältnis. */
@@ -3998,9 +3999,12 @@ function baueZifferMuster(){
 
 /* Nächster Nachbar, dazu der Abstand zur zweitbesten Klasse als Maß für die Sicherheit.
    erlaubt schränkt auf die Klassen ein, die im jeweiligen Feld überhaupt vorkommen können. */
-function erkenneZeichen(mm, erlaubt){
+function erkenneZeichen(mm, erlaubt, bevorzugt){
   const muster = baueZifferMuster();
   const erlaubtSet = erlaubt ? new Set(erlaubt) : null;
+  /* In Textfeldern sind Buchstaben viel häufiger als Ziffern. Ohne diesen
+     Vorzug wird aus einem O eine 0, aus einem T eine 7 und aus einem Y eine 9. */
+  const bevorzugtSet = bevorzugt ? new Set(bevorzugt) : null;
   const jeKlasse = new Array(ZEICHEN.length).fill(Infinity);
   for(const m of muster){
     if(erlaubtSet && !erlaubtSet.has(m.klasse)) continue;
@@ -4009,6 +4013,7 @@ function erkenneZeichen(mm, erlaubt){
     /* Das Seitenverhältnis stärker gewichten: sonst wird eine schmale 1
        mit einem Komma verwechselt, weil beide wenig Fläche belegen. */
     d += 0.12*Math.pow(Math.log((mm.seiten||1)/(m.seiten||1)), 2);
+    if(bevorzugtSet && !bevorzugtSet.has(m.klasse)) d *= 1.35;
     if(d < jeKlasse[m.klasse]) jeKlasse[m.klasse] = d;
   }
   const sortiert = jeKlasse.map((d,k)=>({d,k})).filter(x=>isFinite(x.d)).sort((a,b)=>a.d-b.d);
@@ -4019,7 +4024,7 @@ function erkenneZeichen(mm, erlaubt){
 }
 
 /* Liest eine Reihe von Einzelkästchen, egal ob Ziffern oder Buchstaben. */
-function leseKaemme(felder, maske, w, h, H, seite, klassen){
+function leseKaemme(felder, maske, w, h, H, seite, klassen, bevorzugt){
   const proNr = {};
   (felder||[]).filter(z => z.seite === seite).forEach(z => {
     const ix = z.w*0.22, iy = z.h*0.19;
@@ -4030,14 +4035,14 @@ function leseKaemme(felder, maske, w, h, H, seite, klassen){
     const y0 = Math.max(0, Math.floor(Math.min(...e.map(p=>p.y))));
     const y1 = Math.min(h, Math.ceil (Math.max(...e.map(p=>p.y))));
     const mm = (x1-x0 > 4 && y1-y0 > 4) ? zeichenMerkmale(maske, w, h, x0, y0, x1, y1) : null;
-    (proNr[z.nr] = proNr[z.nr] || [])[z.idx] = mm ? erkenneZeichen(mm, klassen) : null;
+    (proNr[z.nr] = proNr[z.nr] || [])[z.idx] = mm ? erkenneZeichen(mm, klassen, bevorzugt) : null;
   });
   return proNr;
 }
 
 /* Kurzantworten in Buchstabenkästchen. Unsichere Zeichen werden als ? markiert. */
 function leseBuchstaben(maske, w, h, H, layout, seite){
-  const proNr = leseKaemme(layout.buchstaben, maske, w, h, H, seite, BUCHSTABEN_KLASSEN);
+  const proNr = leseKaemme(layout.buchstaben, maske, w, h, H, seite, BUCHSTABEN_KLASSEN, NUR_BUCHSTABEN_KLASSEN);
   return Object.entries(proNr).map(([nr, felder]) => {
     const belegt = felder.filter(Boolean);
     const text = felder.map(f => f ? (f.sicher ? f.zeichen : "?") : "").join("").trim();
