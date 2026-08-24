@@ -44,6 +44,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--brand-2);box-shadow:0
 textarea{min-height:70px;resize:vertical}
 label{display:block;font-size:.78rem;font-weight:700;color:var(--muted);margin:0 0 5px;text-transform:uppercase;letter-spacing:.04em}
 .hidden{display:none !important}
+/* Passwortfeld mit Auge zum Sichtbarmachen */
+.pw-feld{position:relative}
+.pw-feld input{padding-right:46px}
+.pw-auge{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:#eef2f9;border:none;
+  width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:1rem;line-height:1;
+  color:#42526b;transition:.13s}
+.pw-auge:hover{background:#e2e9f5}
 :focus-visible{outline:2.5px solid var(--brand-2);outline-offset:2px}
 
 /* Buttons: jeder Knopf sieht aus wie ein Knopf */
@@ -333,7 +340,13 @@ table.t tbody tr:hover td{background:#f8fafd}
       </div>
       <div class="field">
         <label>Passwort</label>
-        <input id="in-pass" type="password" autocomplete="current-password" required minlength="6" placeholder="Mindestens 6 Zeichen">
+        <div class="pw-feld">
+          <input id="in-pass" type="password" autocomplete="current-password" required minlength="6" placeholder="Mindestens 6 Zeichen">
+          <button type="button" class="pw-auge" onclick="pwSichtbar(this)" title="Passwort anzeigen" aria-label="Passwort anzeigen">👁</button>
+        </div>
+        <div style="text-align:right;margin-top:6px">
+          <a href="#" class="xs" onclick="passwortVergessen();return false">Passwort vergessen?</a>
+        </div>
       </div>
       <button class="btn full" id="auth-btn" type="submit">Anmelden</button>
     </form>
@@ -394,7 +407,8 @@ function ladeVerbindung(){
 }
 const CONF = ladeVerbindung();
 const sb = CONF ? window.supabase.createClient(CONF.url, CONF.key, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+  /* detectSessionInUrl muss an sein, sonst kann der Link aus der Passwort-Mail nicht greifen */
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "implicit" }
 }) : null;
 
 /* Bewertungsskala */
@@ -604,6 +618,97 @@ function closeModal(){ el("modal-root").innerHTML = ""; }
 /* =========================================================
    AUTHENTIFIZIERUNG
    ========================================================= */
+/* Passwort beim Tippen sichtbar machen. Ein gespeichertes Passwort laesst sich
+   nicht anzeigen, es liegt nur als Einweg-Hash in der Datenbank. */
+function pwSichtbar(knopf){
+  const feld = knopf.parentElement.querySelector("input");
+  if(!feld) return;
+  const zeigen = feld.type === "password";
+  feld.type = zeigen ? "text" : "password";
+  knopf.textContent = zeigen ? "🙈" : "👁";
+  knopf.title = zeigen ? "Passwort verbergen" : "Passwort anzeigen";
+  feld.focus();
+}
+
+/* Rücksetz-Mail anfordern */
+async function passwortVergessen(){
+  const feld = el("in-email");
+  const email = (feld?.value || "").trim();
+  if(!email){
+    authError("Bitte zuerst die E-Mail-Adresse eintragen, dann nochmal auf „Passwort vergessen“ tippen.");
+    feld?.focus();
+    return;
+  }
+  authError("Rücksetz-Mail wird angefordert …");
+  const ziel = location.origin + location.pathname;
+  const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo: ziel});
+  const box = el("auth-err");
+  if(error){
+    let m = error.message || "Unbekannter Fehler";
+    if(/rate limit|too many/i.test(m)) m = "Zu viele Anfragen. Der Gratis-Tarif erlaubt nur wenige Mails pro Stunde, bitte später nochmal versuchen.";
+    authError("Fehler: " + m);
+    return;
+  }
+  box.classList.remove("hidden");
+  box.style.background = "#dcfce7"; box.style.borderColor = "#86efac"; box.style.color = "#15803d";
+  box.innerHTML = "Falls es ein Konto zu <strong>" + esc(email) + "</strong> gibt, ist eine Mail unterwegs. "
+    + "Der Link darin führt zurück hierher, dann kannst du ein neues Passwort setzen.<br>"
+    + "<span style='font-size:.9em'>Schau auch im Spam-Ordner nach. Der Gratis-Tarif verschickt nur wenige Mails pro Stunde.</span>";
+}
+
+/* Bildschirm zum Setzen eines neuen Passworts, nach Klick auf den Mail-Link */
+function zeigeNeuesPasswort(){
+  el("app").classList.add("hidden");
+  el("view-auth").classList.remove("hidden");
+  el("view-auth").innerHTML = `
+    <div class="auth-card">
+      <h1>Neues Passwort setzen</h1>
+      <p class="auth-sub">Du bist über den Link aus der E-Mail hier gelandet. Vergib jetzt ein neues Passwort.</p>
+      <div id="np-err" class="err hidden"></div>
+      <form onsubmit="return neuesPasswortSpeichern(event)">
+        <div class="field">
+          <label>Neues Passwort</label>
+          <div class="pw-feld">
+            <input id="np-pass" type="password" required minlength="6" autocomplete="new-password" placeholder="Mindestens 6 Zeichen">
+            <button type="button" class="pw-auge" onclick="pwSichtbar(this)" title="Passwort anzeigen">👁</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Zur Sicherheit nochmal</label>
+          <div class="pw-feld">
+            <input id="np-pass2" type="password" required minlength="6" autocomplete="new-password" placeholder="Gleiches Passwort nochmal">
+            <button type="button" class="pw-auge" onclick="pwSichtbar(this)" title="Passwort anzeigen">👁</button>
+          </div>
+        </div>
+        <button class="btn full" id="np-btn" type="submit">Passwort speichern</button>
+      </form>
+    </div>`;
+}
+
+async function neuesPasswortSpeichern(ev){
+  ev.preventDefault();
+  const a = el("np-pass").value, b = el("np-pass2").value;
+  const box = el("np-err");
+  const zeig = m => { box.textContent = m; box.classList.remove("hidden"); };
+  if(a !== b){ zeig("Die beiden Passwörter sind nicht gleich."); return false; }
+  const btn = el("np-btn"); const alt = btn.innerHTML;
+  btn.innerHTML = '<div class="loader"></div>'; btn.disabled = true;
+  const {error} = await sb.auth.updateUser({password: a});
+  btn.innerHTML = alt; btn.disabled = false;
+  if(error){
+    let m = error.message || "Unbekannter Fehler";
+    if(/should be at least/i.test(m)) m = "Das Passwort muss mindestens 6 Zeichen haben.";
+    if(/same as the old|different from/i.test(m)) m = "Das ist dein bisheriges Passwort. Bitte ein anderes wählen.";
+    zeig("Fehler: " + m);
+    return false;
+  }
+  /* Adresse säubern, damit der Link nicht erneut greift */
+  history.replaceState(null, "", location.origin + location.pathname);
+  toast("Passwort geändert ✓");
+  await boot();
+  return false;
+}
+
 let authMode = "login";
 function setAuthMode(m){
   authMode = m;
@@ -647,6 +752,11 @@ async function doAuth(ev){
     btn.innerHTML = old; btn.disabled = false;
   }
 }
+/* Kommt der Nutzer über den Link aus der Rücksetz-Mail, meldet Supabase das hier. */
+sb.auth.onAuthStateChange((ereignis) => {
+  if(ereignis === "PASSWORD_RECOVERY") zeigeNeuesPasswort();
+});
+
 async function logout(){
   await sb.auth.signOut();
   location.reload();
@@ -5132,6 +5242,7 @@ async function viewTeam(){
         <td>${statusBadge(p.status)}</td>
         <td class="xs mono">${fmtDate(p.created_at)}</td>
         <td style="text-align:right;white-space:nowrap">
+          <button class="btn ghost sm" title="Rücksetz-Mail schicken" onclick="pwMailSchicken('${esc(p.email)}')">🔑 Passwort</button>
           ${p.id!==S.user.id?`
             <button class="btn ghost sm" onclick="setRole('${p.id}','${p.role==="admin"?"mitarbeiter":"admin"}')">${p.role==="admin"?"Zu Mitarbeiter":"Zu Admin"}</button>
             <button class="btn ${p.status==="aktiv"?"danger":"sec"} sm" onclick="setStatus('${p.id}','${p.status==="aktiv"?"gesperrt":"aktiv"}')">${p.status==="aktiv"?"Sperren":"Freigeben"}</button>`:""}
@@ -5139,6 +5250,19 @@ async function viewTeam(){
       </tbody></table>
     </div>`;
 }
+/* Rücksetz-Mail an einen Kollegen. Auch als Administrator siehst du sein
+   Passwort nie, du kannst ihm nur den Weg zu einem neuen aufmachen. */
+async function pwMailSchicken(email){
+  if(!confirm(`Rücksetz-Mail an ${email} schicken?\n\nDie Person bekommt einen Link, mit dem sie sich selbst ein neues Passwort setzt. Das bisherige Passwort bleibt bis dahin gültig.`)) return;
+  const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo: location.origin + location.pathname});
+  if(error){
+    let m = error.message || "Unbekannter Fehler";
+    if(/rate limit|too many/i.test(m)) m = "Zu viele Anfragen. Der Gratis-Tarif erlaubt nur wenige Mails pro Stunde.";
+    toast("Fehler: "+m, 5000); return;
+  }
+  toast(`Rücksetz-Mail an ${email} unterwegs ✓`, 4000);
+}
+
 async function setRole(id, role){
   const {error} = await sb.from("profiles").update({role}).eq("id",id);
   if(error) return toast("Fehler: "+error.message,4000);
@@ -5173,7 +5297,16 @@ function viewProfil(){
     <div class="card">
       <h3>Passwort ändern</h3>
       <form onsubmit="return changePw(event)">
-        <div class="field"><label>Neues Passwort</label><input name="pw" type="password" minlength="6" required placeholder="Mindestens 6 Zeichen"></div>
+        <div class="field"><label>Neues Passwort</label>
+          <div class="pw-feld">
+            <input name="pw" type="password" minlength="6" required placeholder="Mindestens 6 Zeichen" autocomplete="new-password">
+            <button type="button" class="pw-auge" onclick="pwSichtbar(this)" title="Passwort anzeigen">👁</button>
+          </div>
+        </div>
+        <div class="xs muted" style="margin-bottom:10px">
+          Dein bisheriges Passwort kann dir niemand anzeigen, auch kein Administrator. Es liegt nur als Einweg-Verschlüsselung in der Datenbank.
+          Mit dem Auge siehst du, was du gerade tippst.
+        </div>
         <button class="btn sec">Passwort aktualisieren</button>
       </form>
     </div>
