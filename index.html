@@ -3347,7 +3347,14 @@ function korrigiereFachbegriffe(text){
   /* 3) Vorsichtiger Ähnlichkeitsvergleich für einzelne Wörter */
   out = out.replace(/[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß0-9-]{3,}/g, (wort) => {
     const n = normWort(wort);
-    if(!n || idx.has(n)) return wort;                 /* schon korrekt */
+    if(!n) return wort;
+    /* Bekanntes Wort: auf die richtige Schreibweise ziehen. Wichtig für Umlaute,
+       die Spracherkennungen oft als ae, oe, ue ausgeben. */
+    if(idx.has(n)){
+      const richtig = idx.get(n);
+      if(richtig !== wort){ aenderungen.push({von: wort, zu: richtig, art: "schreibweise"}); return richtig; }
+      return wort;
+    }
     const grenze = erlaubterAbstand(n.length);
     if(grenze === 0) return wort;
     let bestes = null, bestAbstand = grenze + 1;
