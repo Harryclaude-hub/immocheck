@@ -182,3 +182,19 @@ Vor jeder Veröffentlichung mindestens `node build.js` und einen Blick in die Ko
   `echo 'export * from "@supabase/supabase-js";' > entry.js && npx esbuild entry.js --bundle --format=iife --global-name=supabase --minify --outfile=vendor/supabase.js`
 - jsPDF kennt keine Emojis. Im PDF werden Bewertungen deshalb als Text und Zahl ausgegeben, nicht als Symbol.
 - Supabase im Gratis-Tarif erlaubt nur zwei aktive Projekte und verschickt nur wenige Mails pro Stunde. Deshalb ist die E-Mail-Bestätigung per Trigger überbrückt und sollte zusätzlich im Dashboard abgeschaltet werden.
+
+## Passwörter und Diktat-Fachbegriffe
+
+- **Passwörter sind niemals anzeigbar.** Supabase legt nur einen bcrypt-Hash ab. Die App bietet
+  deshalb: Auge zum Sichtbarmachen des gerade getippten Passworts (`pwSichtbar`), „Passwort
+  vergessen" per Rücksetz-Mail (`passwortVergessen`), das Setzen des neuen Passworts nach dem
+  Mail-Link (`zeigeNeuesPasswort`, ausgelöst über `onAuthStateChange` bei `PASSWORD_RECOVERY`) und
+  für Admins eine Rücksetz-Mail an Kollegen (`pwMailSchicken`). Ein „Passwort anzeigen" im Sinne von
+  Klartext darf nie versprochen werden, das geht technisch nicht und soll auch nicht gehen.
+- `detectSessionInUrl` muss **an** bleiben, sonst greift der Link aus der Rücksetz-Mail nicht.
+- **Diktat-Fachbegriffe:** `korrigiereFachbegriffe(text)` zieht Verhörer der Spracherkennung gerade,
+  in drei Stufen: feste Regeln (`VERHOERER`), Zusammenziehen getrennter Wörter, dann vorsichtiger
+  Levenshtein-Vergleich gegen `FACHWOERTER`. Der erlaubte Abstand hängt an der Wortlänge, bei vier
+  Zeichen oder weniger wird gar nicht geraten, sonst würde aus „Tür" ein „Turm". Umlaute werden auf
+  die richtige Schreibweise gezogen (Wasserzaehler wird Wasserzähler). Neue Begriffe einfach in
+  `FACHWOERTER` eintragen, der Rest ergibt sich daraus.
