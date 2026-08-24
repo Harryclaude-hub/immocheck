@@ -3197,6 +3197,205 @@ function istSchaden(t){
   return SCHADEN_WOERTER.some(w => s.includes(w));
 }
 
+/* =========================================================
+   FACHBEGRIFFE IM DIKTAT GERADEZIEHEN
+   Die Spracherkennung des Browsers kennt keine Bau- und Immobilienfachsprache
+   und lässt sich auch nicht mit eigenen Wörtern füttern. Deshalb wird der Text
+   danach korrigiert: erst bekannte Verhörer, dann zusammengehörige Wörter
+   verbinden, zuletzt ein vorsichtiger Ähnlichkeitsvergleich.
+   Jede Änderung wird dem Nutzer angezeigt, nichts wird still umgeschrieben.
+   ========================================================= */
+
+/* Der Fachwortschatz. Alles, was hier steht, gilt als richtig geschrieben. */
+const FACHWOERTER = [
+  "FI-Schutzschalter","Fehlerstromschutzschalter","Sicherungskasten","Verteilerkasten","Zählerkasten",
+  "Stromzähler","Steckdose","Lichtschalter","Bewegungsmelder","Notbeleuchtung","Blitzschutz",
+  "Potentialausgleich","Erdung","Leitungsschutzschalter","Unterverteilung",
+  "Rauchmelder","Rauchwarnmelder","Brandschutztür","Brandschutzklappe","Feuerlöscher","Wandhydrant",
+  "Fluchtweg","Rettungsweg","Notausgang","Brandabschnitt",
+  "Heizkessel","Gastherme","Fernwärme","Vorlauftemperatur","Rücklauftemperatur","Heizkörper",
+  "Thermostatventil","Umwälzpumpe","Ausdehnungsgefäß","Heizraum","Öltank","Rauchfang","Schornstein",
+  "Kaminkehrer","Abgasrohr","Zirkulationsleitung","Legionellen","Warmwasserspeicher","Boiler",
+  "Wasserzähler","Absperrhahn","Rückstauklappe","Fallrohr","Dachrinne","Regenrinne","Siphon",
+  "Abflussrohr","Kanalanschluss","Sanitärinstallation","Silikonfuge","Fliesenspiegel",
+  "Estrich","Trittschalldämmung","Wärmedämmung","Wärmebrücke","Dampfsperre","Sockelleiste",
+  "Putzriss","Setzriss","Haarriss","Bausubstanz","Feuchtigkeit","Durchfeuchtung","Wasserschaden",
+  "Schimmelbefall","Salpeterausblühung","Kondensat","Schlagregen",
+  "Aufzugsanlage","Aufzugsmaschinenraum","Notrufsystem","Fahrkorb","Schachttür",
+  "Tiefgarage","Schrankenanlage","Stellplatz","Kellerabteil","Waschküche","Trockenraum",
+  "Hausanschlussraum","Müllraum","Fahrradraum","Kinderwagenraum","Gemeinschaftsraum",
+  "Dachgeschoss","Dachboden","Dachterrasse","Dachausstieg","Dachhaut","Firstziegel","Attika",
+  "Fassade","Sockelbereich","Balkon","Loggia","Geländer","Handlauf","Absturzsicherung",
+  "Fensterbank","Rollladen","Jalousie","Isolierverglasung","Fensterdichtung","Türschließer",
+  "Schließzylinder","Gegensprechanlage","Klingelanlage","Briefkastenanlage","Treppenhaus",
+  "Lüftungsschacht","Abluft","Zuluft","Lüftungsanlage",
+  "Grundriss","Wohnfläche","Nutzfläche","Quadratmeter","Energieausweis","Betriebskosten",
+  "Hausverwaltung","Eigentümergemeinschaft","Instandhaltung","Instandsetzung","Sanierung",
+  "Verkehrssicherungspflicht","Erhaltungspflicht","Mängelrüge","Begehungsprotokoll"
+];
+
+/* Bekannte Verhörer der Spracherkennung. Links was ankommt, rechts was gemeint ist.
+   Wird als ganzes Wort ersetzt, Groß- und Kleinschreibung egal. */
+const VERHOERER = [
+  [/\bf\.?\s*i\.?[- ]?(schutz)?schalter\b/gi, "FI-Schutzschalter"],
+  [/\beffi[- ]?schalter\b/gi, "FI-Schutzschalter"],
+  [/\bfi\b(?!-)/gi, "FI-Schutzschalter"],
+  [/\bestrisch\b/gi, "Estrich"],
+  [/\best rich\b/gi, "Estrich"],
+  [/\bterme\b/gi, "Therme"],
+  [/\bgas therme\b/gi, "Gastherme"],
+  [/\brauch melder\b/gi, "Rauchmelder"],
+  [/\brauch fang\b/gi, "Rauchfang"],
+  [/\bregion ellen\b/gi, "Legionellen"],
+  [/\blegio nellen\b/gi, "Legionellen"],
+  [/\bsilikon fuge\b/gi, "Silikonfuge"],
+  [/\bvorlauf temperatur\b/gi, "Vorlauftemperatur"],
+  [/\brücklauf temperatur\b/gi, "Rücklauftemperatur"],
+  [/\bwärme brücke\b/gi, "Wärmebrücke"],
+  [/\bwärme dämmung\b/gi, "Wärmedämmung"],
+  [/\bwasser schaden\b/gi, "Wasserschaden"],
+  [/\bschimmel befall\b/gi, "Schimmelbefall"],
+  [/\bkeller abteil\b/gi, "Kellerabteil"],
+  [/\bwasch küche\b/gi, "Waschküche"],
+  [/\btrocken raum\b/gi, "Trockenraum"],
+  [/\btreppen haus\b/gi, "Treppenhaus"],
+  [/\bhand lauf\b/gi, "Handlauf"],
+  [/\bdach rinne\b/gi, "Dachrinne"],
+  [/\bfall rohr\b/gi, "Fallrohr"],
+  [/\bquadrat meter\b/gi, "Quadratmeter"],
+  [/\benergie ausweis\b/gi, "Energieausweis"],
+  [/\bqm\b/gi, "Quadratmeter"],
+  [/\bgrad celsius\b/gi, "°C"]
+];
+
+/* Wörter, die im Diktat oft getrennt ankommen, aber zusammengehören.
+   Wird aus dem Fachwortschatz automatisch abgeleitet. */
+function normWort(w){
+  return String(w||"").toLowerCase()
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss")
+    .replace(/[^a-z0-9]/g,"");
+}
+let FACH_INDEX = null;
+function fachIndex(){
+  if(FACH_INDEX) return FACH_INDEX;
+  FACH_INDEX = new Map();
+  FACHWOERTER.forEach(w => { FACH_INDEX.set(normWort(w), w); });
+  return FACH_INDEX;
+}
+
+/* Abstand nach Levenshtein, abgebrochen sobald er zu groß wird. */
+function wortAbstand(a, b, grenze){
+  const n = a.length, m = b.length;
+  if(Math.abs(n-m) > grenze) return grenze+1;
+  let vor = new Array(m+1);
+  for(let j=0;j<=m;j++) vor[j] = j;
+  for(let i=1;i<=n;i++){
+    const akt = new Array(m+1);
+    akt[0] = i;
+    let bestesInZeile = akt[0];
+    for(let j=1;j<=m;j++){
+      const kosten = a[i-1] === b[j-1] ? 0 : 1;
+      akt[j] = Math.min(akt[j-1]+1, vor[j]+1, vor[j-1]+kosten);
+      if(akt[j] < bestesInZeile) bestesInZeile = akt[j];
+    }
+    if(bestesInZeile > grenze) return grenze+1;
+    vor = akt;
+  }
+  return vor[m];
+}
+
+/* Wie viele Zeichen dürfen abweichen? Kurze Wörter fast gar nicht,
+   sonst wird aus "Tür" ein "Turm". */
+function erlaubterAbstand(laenge){
+  if(laenge <= 4)  return 0;
+  if(laenge <= 7)  return 1;
+  if(laenge <= 12) return 2;
+  return 3;
+}
+
+/* Hauptfunktion. Gibt den bereinigten Text und die Liste der Änderungen zurück. */
+function korrigiereFachbegriffe(text){
+  let out = String(text||"");
+  const aenderungen = [];
+  if(!out.trim()) return {text: out, aenderungen};
+
+  /* 1) Bekannte Verhörer, das sind die sicheren Treffer */
+  VERHOERER.forEach(([muster, richtig]) => {
+    out = out.replace(muster, (treffer) => {
+      if(treffer.toLowerCase() !== richtig.toLowerCase()) aenderungen.push({von: treffer, zu: richtig, art: "bekannt"});
+      return richtig;
+    });
+  });
+
+  /* 2) Zwei benachbarte Wörter, die zusammen ein Fachwort ergeben */
+  const idx = fachIndex();
+  let teile = out.split(/(\s+)/);
+  for(let i=0;i<teile.length-2;i++){
+    if(/^\s+$/.test(teile[i])) continue;
+    const a = teile[i].replace(/[.,;:!?]$/,"");
+    const b = teile[i+2] ? teile[i+2].replace(/[.,;:!?]$/,"") : "";
+    if(!a || !b) continue;
+    const zusammen = idx.get(normWort(a + b));
+    if(zusammen){
+      aenderungen.push({von: a + " " + b, zu: zusammen, art: "verbunden"});
+      teile[i] = zusammen; teile[i+1] = ""; teile[i+2] = "";
+      i += 2;
+    }
+  }
+  out = teile.join("");
+
+  /* 3) Vorsichtiger Ähnlichkeitsvergleich für einzelne Wörter */
+  out = out.replace(/[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß0-9-]{3,}/g, (wort) => {
+    const n = normWort(wort);
+    if(!n || idx.has(n)) return wort;                 /* schon korrekt */
+    const grenze = erlaubterAbstand(n.length);
+    if(grenze === 0) return wort;
+    let bestes = null, bestAbstand = grenze + 1;
+    for(const [schluessel, richtig] of idx){
+      if(Math.abs(schluessel.length - n.length) > grenze) continue;
+      const d = wortAbstand(n, schluessel, grenze);
+      if(d < bestAbstand){ bestAbstand = d; bestes = richtig; if(d === 0) break; }
+    }
+    if(bestes && bestAbstand <= grenze){
+      /* Großschreibung am Satzanfang beibehalten ist unnötig, Fachwörter sind Substantive */
+      aenderungen.push({von: wort, zu: bestes, art: "ähnlich"});
+      return bestes;
+    }
+    return wort;
+  });
+
+  return {text: out, aenderungen};
+}
+
+/* Zeigt die Korrekturen unter dem Diktatfeld an und erlaubt das Zurücknehmen. */
+let DIKTAT_VORHER = null;
+function diktatKorrigieren(){
+  const feld = el("notiz-text");
+  if(!feld) return;
+  const roh = feld.value;
+  if(!roh.trim()){ toast("Es ist noch nichts geschrieben.", 3000); return; }
+  const {text, aenderungen} = korrigiereFachbegriffe(roh);
+  const ziel = el("diktat-korrektur");
+  if(!aenderungen.length){
+    if(ziel) ziel.innerHTML = '<div class="xs muted">Keine Fachbegriffe zu korrigieren, der Text bleibt wie er ist.</div>';
+    return;
+  }
+  DIKTAT_VORHER = roh;
+  feld.value = text;
+  if(ziel){
+    ziel.innerHTML = '<div class="xs" style="margin-top:6px">'
+      + '<strong>' + aenderungen.length + ' Begriff' + (aenderungen.length===1?"":"e") + ' geradegezogen:</strong> '
+      + aenderungen.map(a => '<span class="badge info xs">' + esc(a.von) + ' → ' + esc(a.zu) + '</span>').join(" ")
+      + ' <button class="btn ghost sm" onclick="diktatKorrekturZurueck()">rückgängig</button></div>';
+  }
+}
+function diktatKorrekturZurueck(){
+  const feld = el("notiz-text");
+  if(feld && DIKTAT_VORHER != null){ feld.value = DIKTAT_VORHER; DIKTAT_VORHER = null; }
+  const ziel = el("diktat-korrektur");
+  if(ziel) ziel.innerHTML = '<div class="xs muted">Korrektur zurückgenommen.</div>';
+}
+
 let DIKTAT = null;
 function diktatVerfuegbar(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
 
@@ -3238,8 +3437,11 @@ function stopDiktat(){
 
 async function speichereNotiz(){
   const feld = el("notiz-text"), raumFeld = el("notiz-raum");
-  const text = (feld?.value || "").trim();
-  if(!text){ toast("Es ist noch nichts aufgeschrieben.", 3000); return; }
+  const rohtext = (feld?.value || "").trim();
+  if(!rohtext){ toast("Es ist noch nichts aufgeschrieben.", 3000); return; }
+  /* Fachbegriffe geradeziehen, bevor die Notiz in die Datenbank geht */
+  const korr = korrigiereFachbegriffe(rohtext);
+  const text = korr.text;
   const rec = {
     inspection_id: IS.insp.id, property_id: IS.prop.id,
     room: (raumFeld?.value || "").trim() || null,
@@ -3253,7 +3455,10 @@ async function speichereNotiz(){
   if(feld) feld.value = "";
   IS.letzteQuelle = "getippt";
   renderNotizCard();
-  toast(rec.damage ? "Notiz gespeichert, als Schaden markiert ✓" : "Notiz gespeichert ✓");
+  const zusatz = korr.aenderungen.length
+    ? `, ${korr.aenderungen.length} Fachbegriff${korr.aenderungen.length===1?"":"e"} korrigiert`
+    : "";
+  toast((rec.damage ? "Notiz gespeichert, als Schaden markiert" : "Notiz gespeichert") + zusatz + " ✓", 4000);
 }
 
 async function loescheNotiz(id){
@@ -3325,8 +3530,13 @@ function notizCardHtml(){
           ${diktatVerfuegbar()?"":"disabled title='Dieser Browser kann kein Diktat'"}>🎤 Diktat starten</button>
       </div>
     </div>
-    <div class="field">
+    <div class="field" style="margin-bottom:6px">
       <textarea id="notiz-text" rows="3" placeholder="Was fällt dir auf? Beim Diktat erscheint der Text hier."></textarea>
+      <div id="diktat-korrektur"></div>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn sec sm" onclick="diktatKorrigieren()" title="Fachbegriffe im Text geradeziehen">🛠️ Fachbegriffe prüfen</button>
+      <div class="xs muted" style="flex:1">Beim Sichern läuft das automatisch. Der Knopf zeigt dir vorher, was geändert würde.</div>
     </div>
     <div class="row">
       <div class="xs muted" style="flex:1">${diktatVerfuegbar()
